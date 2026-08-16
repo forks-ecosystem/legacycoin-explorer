@@ -45,10 +45,14 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/", s.handleHome)
 	s.mux.HandleFunc("/block/", s.handleBlock)
 	s.mux.HandleFunc("/blocks", s.handleBlocks)
+	s.mux.HandleFunc("/tx/", s.handleTx)
+	s.mux.HandleFunc("/address/", s.handleAddress)
 	s.mux.HandleFunc("/search", s.handleSearch)
 	s.mux.HandleFunc("/api/stats", s.handleAPIStats)
 	s.mux.HandleFunc("/api/blocks", s.handleAPIBlocks)
 	s.mux.HandleFunc("/api/block/", s.handleAPIBlock)
+	s.mux.HandleFunc("/api/tx/", s.handleAPITx)
+	s.mux.HandleFunc("/api/address/", s.handleAPIAddress)
 }
 
 // Start begins serving HTTP requests.
@@ -171,14 +175,40 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, fmt.Sprintf("/block/%d", height), http.StatusFound)
 		return
 	}
+	// Try as transaction hash (64 hex chars, not a block hash)
+	if len(q) == 64 && isTxid(q) {
+		http.Redirect(w, r, fmt.Sprintf("/tx/%s", q), http.StatusFound)
+		return
+	}
 	// Try as block hash (64 hex chars)
 	if len(q) == 64 {
 		http.Redirect(w, r, fmt.Sprintf("/block/%s", q), http.StatusFound)
 		return
 	}
+	// Try as address (starts with L for LBTC)
+	if isAddress(q) {
+		http.Redirect(w, r, fmt.Sprintf("/address/%s", q), http.StatusFound)
+		return
+	}
 	s.render(w, "error", map[string]interface{}{
-		"Message": fmt.Sprintf("Not found: %s. Enter a block height or block hash.", q),
+		"Message": fmt.Sprintf("Not found: %s. Enter a block height, block hash, transaction hash, or address.", q),
 	})
+}
+
+func isTxid(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+func isAddress(s string) bool {
+	return len(s) > 20 && s[0] == 'L'
 }
 
 // ── API handlers (JSON) ───────────────────────────────────────────────────────
@@ -223,6 +253,85 @@ func (s *Server) handleAPIBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, block)
+}
+
+func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
+	txid := strings.TrimPrefix(r.URL.Path, "/tx/")
+	txid = strings.TrimSpace(txid)
+	
+	if !isTxid(txid) {
+		s.render(w, "error", map[string]interface{}{
+			"Message": fmt.Sprintf("Invalid transaction ID: %s", txid),
+		})
+		return
+	}
+	
+	tx, block, err := s.rpc.FindTransaction(txid)
+	if err != nil {
+		s.render(w, "error", map[string]interface{}{
+			"Message": fmt.Sprintf("Transaction not found: %s", txid),
+		})
+		return
+	}
+	
+	s.render(w, "tx", map[string]interface{}{
+		"Tx":    tx,
+		"Block": block,
+	})
+}
+
+func (s *Server) handleAddress(w http.ResponseWriter, r *http.Request) {
+	address := strings.TrimPrefix(r.URL.Path, "/address/")
+	address = strings.TrimSpace(address)
+	
+	if !isAddress(address) {
+		s.render(w, "error", map[string]interface{}{
+			"Message": fmt.Sprintf("Invalid address: %s", address),
+		})
+		return
+	}
+	
+	addrInfo, err := s.rpc.ValidateAddress(address)
+	if err != nil {
+		s.render(w, "error", map[string]interface{}{
+			"Message": fmt.Sprintf("Address validation failed: %v", err),
+		})
+		return
+	}
+	
+	txs, err := s.rpc.FindAddressTxs(address, 1000)
+	if err != nil {
+		txs = []*RawTransaction{}
+	}
+	
+	s.render(w, "address", map[string]interface{}{
+		"Address": addrInfo,
+		"Txs":     txs,
+	})
+}
+
+func (s *Server) handleAPITx(w http.ResponseWriter, r *http.Request) {
+	txid := strings.TrimPrefix(r.URL.Path, "/api/tx/")
+	tx, _, err := s.rpc.FindTransaction(txid)
+	if err != nil {
+		jsonError(w, "transaction not found", 404)
+		return
+	}
+	jsonOK(w, tx)
+}
+
+func (s *Server) handleAPIAddress(w http.ResponseWriter, r *http.Request) {
+	address := strings.TrimPrefix(r.URL.Path, "/api/address/")
+	addrInfo, err := s.rpc.ValidateAddress(address)
+	if err != nil {
+		jsonError(w, "address not found", 404)
+		return
+	}
+	txs, _ := s.rpc.FindAddressTxs(address, 1000)
+	jsonOK(w, map[string]interface{}{
+		"address": addrInfo,
+		"txs":     txs,
+	})
 }
 
 // ── Cache helpers ─────────────────────────────────────────────────────────────

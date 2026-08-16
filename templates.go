@@ -23,7 +23,7 @@ tbody tr{border-bottom:1px solid var(--border);}tbody tr:last-child{border-botto
 .pg{display:flex;gap:8px;margin-top:18px;}.pg a,.pg span{padding:6px 13px;background:var(--panel);border:1px solid var(--border);font-size:13px;color:var(--muted);}.pg a:hover{border-color:var(--gold);color:var(--gold);text-decoration:none;}.pg .cur{border-color:var(--gold);color:var(--gold);}
 footer{border-top:1px solid var(--border);padding:18px 28px;text-align:center;font-size:12px;color:var(--muted);margin-top:56px;}footer span{color:var(--gold);}`
 
-const navSnip = `<nav><a href="/" class="brand">⛓ LegacyCoin <small>EXPLORER</small></a><div class="navl"><a href="/">Home</a><a href="/blocks">All Blocks</a></div><form class="sf" action="/search" method="GET"><input type="text" name="q" placeholder="Height or hash…"><button type="submit">→</button></form></nav>`
+const navSnip = `<nav><a href="/" class="brand">⛓ LegacyCoin <small>EXPLORER</small></a><div class="navl"><a href="/">Home</a><a href="/blocks">All Blocks</a></div><form class="sf" action="/search" method="GET"><input type="text" name="q" placeholder="Height, hash, txid or address…"><button type="submit">→</button></form></nav>`
 const footSnip = `<footer><span>LegacyCoin (LBTC)</span> Block Explorer · CPU money for everyone</footer>`
 
 const allTemplates = `
@@ -105,4 +105,70 @@ const allTemplates = `
 </div></div>` + footSnip + `</body></html>{{end}}
 
 {{define "error"}}<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Not Found — LegacyCoin Explorer</title><style>` + sharedCSS + `</style></head><body>` + navSnip + `<div class="c"><div class="ebox"><h2>Not Found</h2><p>{{.Message}}</p><a href="/">← Home</a></div></div>` + footSnip + `</body></html>{{end}}
+
+{{define "tx"}}<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Transaction {{.Tx.Txid}} — LegacyCoin Explorer</title><style>` + sharedCSS + `</style></head><body>` + navSnip + `<div class="c">
+<div class="pt">Transaction <span style="font-size:14px;">{{truncate .Tx.Txid 44}}</span></div>
+<div class="dg">
+<div class="dc"><h3>Overview</h3>
+<div class="dr"><span class="dk">TXID</span><span class="dv">{{truncate .Tx.Txid 44}}</span></div>
+<div class="dr"><span class="dk">Block</span><span class="dv gold"><a href="/block/{{.Block.Height}}">{{.Block.Height}}</a></span></div>
+<div class="dr"><span class="dk">Confirmations</span><span class="dv">{{.Tx.Confirmations}}</span></div>
+<div class="dr"><span class="dk">Time</span><span class="dv">{{formatTime .Tx.Time}}</span></div>
+<div class="dr"><span class="dk">Size</span><span class="dv">{{.Tx.Size}} bytes</span></div>
+<div class="dr"><span class="dk">Version</span><span class="dv">{{.Tx.Version}}</span></div>
+</div>
+<div class="dc"><h3>Summary</h3>
+<div class="dr"><span class="dk">Inputs</span><span class="dv">{{len .Tx.Vin}}</span></div>
+<div class="dr"><span class="dk">Outputs</span><span class="dv">{{len .Tx.Vout}}</span></div>
+</div>
+</div>
+
+<div class="pt" style="font-size:16px;margin-bottom:10px;">Inputs <span>({{len .Tx.Vin}})</span></div>
+<div class="tw"><table><thead><tr><th>#</th><th>Previous TX</th><th>Vout</th><th>Sequence</th></tr></thead><tbody>
+{{range $i, $in := .Tx.Vin}}<tr>
+<td style="color:var(--muted);">{{$i}}</td>
+<td class="hash"><a href="/tx/{{$in.Txid}}">{{truncate $in.Txid 32}}</a></td>
+<td>{{$in.Vout}}</td>
+<td style="color:var(--muted);">{{$in.Sequence}}</td>
+</tr>{{end}}
+</tbody></table></div>
+
+<div class="pt" style="font-size:16px;margin:18px 0 10px;">Outputs <span>({{len .Tx.Vout}})</span></div>
+<div class="tw"><table><thead><tr><th>#</th><th>Value (LBTC)</th><th>Address</th><th>Type</th></tr></thead><tbody>
+{{range $out := .Tx.Vout}}<tr>
+<td style="color:var(--muted);">{{$out.N}}</td>
+<td style="color:var(--gold);font-family:var(--mono);">{{printf "%.8f" $out.Value}}</td>
+<td class="hash">{{range $addr := $out.ScriptPubKey.Addresses}}<a href="/address/{{$addr}}">{{$addr}}</a>{{end}}</td>
+<td><span class="bge bg-g">{{$out.ScriptPubKey.Type}}</span></td>
+</tr>{{end}}
+</tbody></table></div>
+
+<div style="margin-top:18px;display:flex;gap:14px;">
+<a href="/block/{{.Block.Height}}" style="padding:7px 16px;background:var(--panel);border:1px solid var(--border);font-size:13px;">← Block {{.Block.Height}}</a>
+</div></div>` + footSnip + `</body></html>{{end}}
+
+{{define "address"}}<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Address {{.Address.Address}} — LegacyCoin Explorer</title><style>` + sharedCSS + `</style></head><body>` + navSnip + `<div class="c">
+<div class="pt">Address <span style="font-size:14px;">{{.Address.Address}}</span></div>
+<div class="dg">
+<div class="dc"><h3>Info</h3>
+<div class="dr"><span class="dk">Address</span><span class="dv">{{.Address.Address}}</span></div>
+<div class="dr"><span class="dk">Valid</span><span class="dv">{{if .Address.IsValid}}<span style="color:#22C55E;">Yes</span>{{else}}<span style="color:#EF4444;">No</span>{{end}}</span></div>
+<div class="dr"><span class="dk">Is Mine</span><span class="dv">{{if .Address.IsMine}}Yes{{else}}No{{end}}</span></div>
+<div class="dr"><span class="dk">Script</span><span class="dv">{{if .Address.IsScript}}Yes{{else}}No{{end}}</span></div>
+</div>
+<div class="dc"><h3>Summary</h3>
+<div class="dr"><span class="dk">Transactions</span><span class="dv gold">{{len .Txs}}</span></div>
+</div>
+</div>
+
+<div class="pt" style="font-size:16px;margin-bottom:10px;">Transactions <span>({{len .Txs}})</span></div>
+<div class="tw"><table><thead><tr><th>TXID</th><th>Block</th><th>Time</th><th>Confs</th><th>Outputs</th></tr></thead><tbody>
+{{range $tx := .Txs}}<tr>
+<td class="hash"><a href="/tx/{{$tx.Txid}}">{{truncate $tx.Txid 32}}</a></td>
+<td><a href="/block/{{$tx.Height}}}}">{{$tx.Height}}</a></td>
+<td style="color:var(--muted);font-size:12px;">{{formatTime $tx.Time}}</td>
+<td><span class="bge bg-g">{{$tx.Confirmations}}</span></td>
+<td>{{len $tx.Vout}}</td>
+</tr>{{end}}
+</tbody></table></div></div>` + footSnip + `</body></html>{{end}}
 `
