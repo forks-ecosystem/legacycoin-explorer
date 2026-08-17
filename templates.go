@@ -26,8 +26,29 @@ footer{border-top:1px solid var(--border);padding:18px 28px;text-align:center;fo
 const navSnip = `<nav><a href="/" class="brand">⛓ LegacyCoin <small>EXPLORER</small></a><div class="navl"><a href="/">Home</a><a href="/blocks">All Blocks</a></div><form class="sf" action="/search" method="GET"><input type="text" name="q" placeholder="Height, hash, txid or address…"><button type="submit">→</button></form></nav>`
 const footSnip = `<footer><span>LegacyCoin (LBTC)</span> Block Explorer · CPU money for everyone</footer>`
 
+const bookmarkCSS = `.bm{background:var(--panel);border:1px solid var(--border);margin-top:22px;padding:18px;}.bm h3{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px;}.bm-list{display:flex;flex-direction:column;gap:6px;}.bm-item{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--panel2);border:1px solid var(--border);font-size:13px;}.bm-item:hover{border-color:var(--gold);}.bm-item .bm-type{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);width:50px;}.bm-item .bm-val{font-family:var(--mono);font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.bm-item .bm-del{color:var(--muted);cursor:pointer;font-size:11px;padding:2px 6px;}.bm-item .bm-del:hover{color:var(--red);}.bm-btn{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;background:var(--gold);color:var(--black);font-size:12px;font-weight:700;border:none;cursor:pointer;}.bm-btn:hover{opacity:.85;}.bm-btn.saved{background:var(--panel2);color:var(--gold);border:1px solid var(--gold);}`
+
 const allTemplates = `
-{{define "home"}}<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LegacyCoin Explorer</title><style>` + sharedCSS + `</style></head><body>` + navSnip + `<div class="c">
+{{define "home"}}<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LegacyCoin Explorer</title><style>` + sharedCSS + bookmarkCSS + `</style><script>
+async function deleteBookmark(id) {
+  await fetch('/api/bookmarks/delete/' + id, {method:'DELETE'});
+  const el = document.getElementById('bm-' + id);
+  if (el) el.remove();
+}
+async function toggleBookmark(type, value, label) {
+  const id = 'bm_' + type + '_' + btoa(value).replace(/[^a-zA-Z0-9]/g,'').substring(0,20);
+  const btn = document.getElementById('bm-btn');
+  if (btn.classList.contains('saved')) {
+    await fetch('/api/bookmarks/delete/' + id, {method:'DELETE'});
+    btn.classList.remove('saved');
+    btn.innerHTML = '☆ Bookmark';
+  } else {
+    await fetch('/api/bookmarks', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,type:type,(type==='address'?'address':'txid'):value,label:label||''})});
+    btn.classList.add('saved');
+    btn.innerHTML = '★ Saved';
+  }
+}
+</script></head><body>` + navSnip + `<div class="c">
 {{if .Error}}<div class="offline">⚠ {{.Error}}</div>{{end}}
 {{if .NodeOnline}}<div class="sg">
 <div class="sc"><div class="sl">Status</div><div class="sv" style="font-size:14px;color:#22C55E;">● ONLINE</div></div>
@@ -37,6 +58,9 @@ const allTemplates = `
 {{with .Mining}}<div class="sc"><div class="sl">Hash Rate</div><div class="sv" style="font-size:14px;">{{.HashesPerSec}} H/s</div></div>
 <div class="sc"><div class="sl">Mempool</div><div class="sv">{{.PooledTx}}</div><div class="ss">pending txs</div></div>{{end}}
 </div>{{end}}
+{{if .Bookmarks}}<div class="bm"><h3>★ Bookmarks</h3><div class="bm-list">
+{{range .Bookmarks}}<div class="bm-item" id="bm-{{.ID}}"><span class="bm-type">{{.Type}}</span><span class="bm-val"><a href="{{if eq .Type "address"}}/address/{{.Address}}{{else}}/tx/{{.Txid}}{{end}}">{{if .Address}}{{.Address}}{{else}}{{.Txid}}{{end}}</a></span><span class="bm-del" onclick="deleteBookmark('{{.ID}}')">✕</span></div>{{end}}
+</div></div>{{end}}
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><div class="pt">Latest <span>Blocks</span></div><a href="/blocks" style="font-size:13px;color:var(--muted);">View all →</a></div>
 <div class="tw"><table><thead><tr><th>Height</th><th>Hash</th><th>Time (UTC)</th><th>Txs</th><th>Reward</th><th>Size</th><th>Confs</th></tr></thead><tbody>
 {{range .RecentBlocks}}<tr>
@@ -106,8 +130,25 @@ const allTemplates = `
 
 {{define "error"}}<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Not Found — LegacyCoin Explorer</title><style>` + sharedCSS + `</style></head><body>` + navSnip + `<div class="c"><div class="ebox"><h2>Not Found</h2><p>{{.Message}}</p><a href="/">← Home</a></div></div>` + footSnip + `</body></html>{{end}}
 
-{{define "tx"}}<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Transaction {{.Tx.Txid}} — LegacyCoin Explorer</title><style>` + sharedCSS + `</style></head><body>` + navSnip + `<div class="c">
+{{define "tx"}}<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Transaction {{.Tx.Txid}} — LegacyCoin Explorer</title><style>` + sharedCSS + bookmarkCSS + `</style><script>
+async function toggleBookmark(type, value, label) {
+  const id = 'bm_' + type + '_' + btoa(value).replace(/[^a-zA-Z0-9]/g,'').substring(0,20);
+  const btn = document.getElementById('bm-btn');
+  if (btn.classList.contains('saved')) {
+    await fetch('/api/bookmarks/delete/' + id, {method:'DELETE'});
+    btn.classList.remove('saved');
+    btn.innerHTML = '☆ Bookmark';
+  } else {
+    await fetch('/api/bookmarks', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,type:type,(type==='address'?'address':'txid'):value,label:label||''})});
+    btn.classList.add('saved');
+    btn.innerHTML = '★ Saved';
+  }
+}
+</script></head><body>` + navSnip + `<div class="c">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;">
 <div class="pt">Transaction <span style="font-size:14px;">{{truncate .Tx.Txid 44}}</span></div>
+<button id="bm-btn" class="bm-btn" onclick="toggleBookmark('tx','{{.Tx.Txid}}','')">☆ Bookmark</button>
+</div>
 <div class="dg">
 <div class="dc"><h3>Overview</h3>
 <div class="dr"><span class="dk">TXID</span><span class="dv">{{truncate .Tx.Txid 44}}</span></div>
@@ -147,8 +188,25 @@ const allTemplates = `
 <a href="/block/{{.Block.Height}}" style="padding:7px 16px;background:var(--panel);border:1px solid var(--border);font-size:13px;">← Block {{.Block.Height}}</a>
 </div></div>` + footSnip + `</body></html>{{end}}
 
-{{define "address"}}<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Address {{.Address.Address}} — LegacyCoin Explorer</title><style>` + sharedCSS + `</style></head><body>` + navSnip + `<div class="c">
+{{define "address"}}<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Address {{.Address.Address}} — LegacyCoin Explorer</title><style>` + sharedCSS + bookmarkCSS + `</style><script>
+async function toggleBookmark(type, value, label) {
+  const id = 'bm_' + type + '_' + btoa(value).replace(/[^a-zA-Z0-9]/g,'').substring(0,20);
+  const btn = document.getElementById('bm-btn');
+  if (btn.classList.contains('saved')) {
+    await fetch('/api/bookmarks/delete/' + id, {method:'DELETE'});
+    btn.classList.remove('saved');
+    btn.innerHTML = '☆ Bookmark';
+  } else {
+    await fetch('/api/bookmarks', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,type:type,(type==='address'?'address':'txid'):value,label:label||''})});
+    btn.classList.add('saved');
+    btn.innerHTML = '★ Saved';
+  }
+}
+</script></head><body>` + navSnip + `<div class="c">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;">
 <div class="pt">Address <span style="font-size:14px;">{{.Address.Address}}</span></div>
+<button id="bm-btn" class="bm-btn" onclick="toggleBookmark('address','{{.Address.Address}}','')">☆ Bookmark</button>
+</div>
 <div class="dg">
 <div class="dc"><h3>Info</h3>
 <div class="dr"><span class="dk">Address</span><span class="dv">{{.Address.Address}}</span></div>

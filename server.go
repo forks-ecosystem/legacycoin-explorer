@@ -13,20 +13,22 @@ import (
 
 // Server is the block explorer HTTP server.
 type Server struct {
-	rpc    *RPCClient
-	cache  *Cache
-	tmpl   *template.Template
-	port   int
-	mux    *http.ServeMux
+	rpc       *RPCClient
+	cache     *Cache
+	tmpl      *template.Template
+	port      int
+	mux       *http.ServeMux
+	bookmarks *BookmarkStore
 }
 
 // NewServer creates a new explorer server.
-func NewServer(rpc *RPCClient, port int) *Server {
+func NewServer(rpc *RPCClient, port int, dataDir string) *Server {
 	s := &Server{
-		rpc:   rpc,
-		cache: NewCache(),
-		port:  port,
-		mux:   http.NewServeMux(),
+		rpc:       rpc,
+		cache:     NewCache(),
+		port:      port,
+		mux:       http.NewServeMux(),
+		bookmarks: NewBookmarkStore(dataDir),
 	}
 	s.tmpl = template.Must(template.New("").Funcs(template.FuncMap{
 		"formatTime":  formatTime,
@@ -53,6 +55,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/block/", s.handleAPIBlock)
 	s.mux.HandleFunc("/api/tx/", s.handleAPITx)
 	s.mux.HandleFunc("/api/address/", s.handleAPIAddress)
+	s.mux.HandleFunc("/api/bookmarks", s.handleAPIBookmarks)
+	s.mux.HandleFunc("/api/bookmarks/delete/", s.handleAPIBookmarkDelete)
 }
 
 // Start begins serving HTTP requests.
@@ -70,6 +74,7 @@ type homeData struct {
 	Info        *NodeInfo
 	Mining      *MiningInfo
 	RecentBlocks []*Block
+	Bookmarks   []*Bookmark
 	Error       string
 }
 
@@ -78,7 +83,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data := homeData{}
+	data := homeData{Bookmarks: s.bookmarks.List()}
 
 	if s.rpc.Ping() {
 		data.NodeOnline = true
@@ -380,6 +385,51 @@ func (s *Server) render(w http.ResponseWriter, name string, data interface{}) {
 	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
 		log.Printf("Template error [%s]: %v", name, err)
 		http.Error(w, "render error", 500)
+	}
+}
+
+// ── Bookmark API handlers ─────────────────────────────────────────────────────
+
+func (s *Server) handleAPIBookmarks(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method == "GET" {
+		jsonOK(w, s.bookmarks.List())
+		return
+	}
+	if r.Method == "POST" {
+		var bm Bookmark
+		if err := json.NewDecoder(r.Body).Decode(&bm); err != nil {
+			jsonError(w, "invalid json", 400)
+			return
+		}
+		bm.ID = fmt.Sprintf("%d", time.Now().UnixNano())
+		s.bookmarks.Add(&bm)
+		jsonOK(w, bm)
+		return
+	}
+	jsonError(w, "method not allowed", 405)
+}
+
+func (s *Server) handleAPIBookmarkDelete(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "DELETE, OPTIONS")
+	if r.Method == "OPTIONS" {
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/api/bookmarks/delete/")
+	if id == "" {
+		jsonError(w, "missing id", 400)
+		return
+	}
+	if s.bookmarks.Delete(id) {
+		jsonOK(w, map[string]string{"status": "deleted"})
+	} else {
+		jsonError(w, "not found", 404)
 	}
 }
 

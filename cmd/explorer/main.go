@@ -57,6 +57,6 @@ func main() {
 		log.Printf("Connected to legacycoind at %s:%d", *nodeHost, *nodePort)
 	}
 
-	srv := explorer.NewServer(rpc, *httpPort)
+	srv := explorer.NewServer(rpc, *httpPort, "/data")
 	srv.Start()
 }
