@@ -13,18 +13,43 @@ make build
 ## Run
 
 ```bash
-./explorer -rpcpassword=yourpass
-
-# All options:
+make build
 ./explorer \
   -nodehost=127.0.0.1 \
   -nodeport=19556 \
-  -rpcuser=legacycoin \
-  -rpcpassword=legacy123 \
-  -port=8080
+  -rpcuser=coin \
+  -rpcpassword=coin \
+  -port=8084
 ```
 
-Then open http://localhost:8080
+Then open http://localhost:8084
+
+## Configuration (.env)
+
+All options are overridable via environment variables (with `-flag` taking
+precedence). Runtime configuration lives in `.env` (gitignored; start from
+`.env.example`). The config is used by Docker via `env_file`:
+
+| Variable              | Default | Description                          |
+|-----------------------|---------|--------------------------------------|
+| `EXPLORER_NODE_HOST`  | `127.0.0.1` | legacycoind hostname             |
+| `EXPLORER_NODE_PORT`  | `19556`  | legacycoind RPC port                 |
+| `EXPLORER_RPC_USER`   | *(none)* | RPC username (overrides cookie)      |
+| `EXPLORER_RPC_PASSWORD` | *(none)* | RPC password (overrides cookie)   |
+| `EXPLORER_COOKIE_FILE` | `/home/coin/.legacycoin/.cookie` | cookie file when user/pass empty |
+| `EXPLORER_PORT`       | `8084`   | Explorer HTTP port                   |
+| `EXPLORER_DATA_DIR`   | `/data`  | Persistent dir for bookmarks         |
+
+## Docker
+
+```bash
+docker compose up -d --build
+```
+
+- Listens on `0.0.0.0:8084`.
+- Uses `network_mode: host` because legacycoind RPC is bound to `127.0.0.1`.
+- Bookmarks persist in `./data/`.
+- Configuration comes from `.env` (see above).
 
 ## Features
 
@@ -42,5 +67,5 @@ Then open http://localhost:8080
 
 | Service  | Port |
 |----------|------|
-| Explorer | 8080 |
+| Explorer | 8084 |
 | Node RPC | 19556 (legacycoind) |

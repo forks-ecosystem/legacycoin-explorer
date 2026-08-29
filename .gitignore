@@ -1,4 +1,6 @@
-explorer
+/explorer
 *.exe
 *.test
 *.out
+data/
+.env

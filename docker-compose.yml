@@ -1,0 +1,13 @@
+services:
+  explorer:
+    build: .
+    image: legacycoin-explorer:latest
+    container_name: legacycoin-explorer
+    restart: unless-stopped
+    # legacycoind RPC is bound to 127.0.0.1 only, so the explorer must share
+    # the host network namespace to reach it (see EXPLORER_NODE_HOST in .env).
+    network_mode: host
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data

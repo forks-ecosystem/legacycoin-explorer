@@ -1,10 +1,16 @@
 // legacycoin-explorer — Block explorer for LegacyCoin (LBTC)
 //
 // Usage:
-//   ./explorer -node=127.0.0.1:19556 -rpcuser=legacycoin -rpcpassword=yourpass
-//   ./explorer -port=8080
 //
-// Then open http://localhost:8080 in your browser.
+//	./explorer -nodehost=127.0.0.1 -nodeport=19556 -rpcuser=coin -rpcpassword=coin
+//	./explorer -port=8084
+//
+// Then open http://localhost:8084 in your browser.
+//
+// All options can be overridden via environment variables (see .env):
+//
+//	EXPLORER_NODE_HOST, EXPLORER_NODE_PORT, EXPLORER_RPC_USER,
+//	EXPLORER_RPC_PASSWORD, EXPLORER_COOKIE_FILE, EXPLORER_PORT, EXPLORER_DATA_DIR
 package main
 
 import (
@@ -12,18 +18,36 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	explorer "github.com/legacycoin/explorer"
 )
 
+func envStr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+func envInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
+}
+
 func main() {
-	nodeHost := flag.String("nodehost", "127.0.0.1", "legacycoind hostname")
-	nodePort := flag.Int("nodeport", 19556, "legacycoind RPC port")
-	rpcUser  := flag.String("rpcuser", "", "RPC username (overrides cookie)")
-	rpcPass  := flag.String("rpcpassword", "", "RPC password (overrides cookie)")
-	cookieFile := flag.String("cookiefile", "/home/coin/.legacycoin/.cookie", "Path to .cookie file for RPC auth")
-	httpPort := flag.Int("port", 8084, "Explorer HTTP port")
+	nodeHost := flag.String("nodehost", envStr("EXPLORER_NODE_HOST", "127.0.0.1"), "legacycoind hostname")
+	nodePort := flag.Int("nodeport", envInt("EXPLORER_NODE_PORT", 19556), "legacycoind RPC port")
+	rpcUser := flag.String("rpcuser", envStr("EXPLORER_RPC_USER", ""), "RPC username (overrides cookie)")
+	rpcPass := flag.String("rpcpassword", envStr("EXPLORER_RPC_PASSWORD", ""), "RPC password (overrides cookie)")
+	cookieFile := flag.String("cookiefile", envStr("EXPLORER_COOKIE_FILE", "/home/coin/.legacycoin/.cookie"), "Path to .cookie file for RPC auth")
+	httpPort := flag.Int("port", envInt("EXPLORER_PORT", 8084), "Explorer HTTP port")
+	dataDir := flag.String("data", envStr("EXPLORER_DATA_DIR", "/data"), "Directory for persistent data (bookmarks)")
 	flag.Parse()
 
 	user := *rpcUser
@@ -57,6 +81,6 @@ func main() {
 		log.Printf("Connected to legacycoind at %s:%d", *nodeHost, *nodePort)
 	}
 
-	srv := explorer.NewServer(rpc, *httpPort, "/data")
+	srv := explorer.NewServer(rpc, *httpPort, *dataDir)
 	srv.Start()
 }
