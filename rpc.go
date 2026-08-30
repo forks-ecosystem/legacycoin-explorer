@@ -237,8 +237,11 @@ func (c *RPCClient) Ping() bool {
 type TxInput struct {
 	Txid         string `json:"txid"`
 	Vout         int    `json:"vout"`
-	ScriptSig    string `json:"scriptSig"`
-	Sequence     uint32 `json:"sequence"`
+	ScriptSig    struct {
+		Asm string `json:"asm"`
+		Hex string `json:"hex"`
+	} `json:"scriptSig"`
+	Sequence uint32 `json:"sequence"`
 }
 
 // TxOutput holds a transaction output.
@@ -546,57 +549,35 @@ func (c *RPCClient) decodeTxFromBlock(blockHash, targetTxid string) (*RawTransac
 	return nil, fmt.Errorf("tx not found in block hex")
 }
 
-// FindAddressTxs scans recent blocks to find transactions involving an address.
-// Uses hex-based approach: one getblock + N decoderawtransaction calls per block.
+// GetAddressTxIDs returns confirmed txids involving an address via the node's
+// address index (getaddresstxids).
+func (c *RPCClient) GetAddressTxIDs(address string) ([]string, error) {
+	raw, err := c.call("getaddresstxids", address)
+	if err != nil {
+		return nil, err
+	}
+	var txids []string
+	if err := json.Unmarshal(raw, &txids); err != nil {
+		return nil, err
+	}
+	return txids, nil
+}
+
+// FindAddressTxs returns transactions involving an address. Uses the node's
+// address index so it works for both recent and historical transactions.
 func (c *RPCClient) FindAddressTxs(address string, maxBlocks int) ([]*RawTransaction, error) {
-	tip, err := c.GetBlockCount()
+	txids, err := c.GetAddressTxIDs(address)
 	if err != nil {
 		return nil, err
 	}
 
-	var txs []*RawTransaction
-	maxScan := tip
-	if maxScan > 10 {
-		maxScan = 10
-	}
-
-	for h := tip; h > tip-maxScan && len(txs) < 50; h-- {
-		hash, err := c.GetBlockHash(h)
+	txs := make([]*RawTransaction, 0, len(txids))
+	for _, txid := range txids {
+		tx, err := c.GetRawTransaction(txid)
 		if err != nil {
 			continue
 		}
-		blockHex, err := c.GetBlockHex(hash)
-		if err != nil {
-			continue
-		}
-		txHexes, err := ExtractTxHexes(blockHex)
-		if err != nil {
-			continue
-		}
-
-		for _, txHex := range txHexes {
-			raw, err := c.call("decoderawtransaction", txHex)
-			if err != nil {
-				continue
-			}
-			var tx RawTransaction
-			if err := json.Unmarshal(raw, &tx); err != nil {
-				continue
-			}
-
-			for _, vout := range tx.Vout {
-				for _, addr := range vout.ScriptPubKey.Addresses {
-					if addr == address {
-						tx.Blockhash = hash
-						tx.Height = h
-						tx.Confirmations = tip - h + 1
-						txs = append(txs, &tx)
-						goto nextBlock
-					}
-				}
-			}
-		}
-	nextBlock:
+		txs = append(txs, tx)
 	}
 	return txs, nil
 }
