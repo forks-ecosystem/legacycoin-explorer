@@ -182,6 +182,7 @@ type Block struct {
 	Nonce             uint32   `json:"nonce"`
 	Tx                []string `json:"tx"`
 	Size              int      `json:"size"`
+	Hex               string   `json:"hex"`
 	Confirmations     int64    `json:"confirmations"`
 }
 
@@ -191,7 +192,15 @@ func (c *RPCClient) GetBlock(hash string) (*Block, error) {
 		return nil, err
 	}
 	var b Block
-	return &b, json.Unmarshal(raw, &b)
+	if err := json.Unmarshal(raw, &b); err != nil {
+		return nil, err
+	}
+	// legacycoind's getblock does not include a size field; derive it from the
+	// serialized block hex (1 byte per 2 hex chars) when absent.
+	if b.Size == 0 && b.Hex != "" {
+		b.Size = len(b.Hex) / 2
+	}
+	return &b, nil
 }
 
 func (c *RPCClient) GetBlockAtHeight(height int64) (*Block, error) {
