@@ -112,7 +112,7 @@ async function toggleBookmark(type, value, label) {
 <div class="dr"><span class="dk">Block Reward</span><span class="dv gold">{{formatLBTC .Reward}}</span></div>
 <div class="dr"><span class="dk">Confirmations</span><span class="dv">{{.Block.Confirmations}}</span></div>
 <div class="dr"><span class="dk">Algorithm</span><span class="dv">Yespower 1.0</span></div>
-<div class="dr"><span class="dk">Difficulty Algo</span><span class="dv">DGW3</span></div>
+<div class="dr"><span class="dk">Difficulty (DGW3)</span><span class="dv">{{printf "%.5f" .Block.Difficulty}}</span></div>
 </div>
 </div>
 <div class="pt" style="font-size:16px;margin-bottom:10px;">Transactions <span>({{len .Block.Tx}})</span></div>

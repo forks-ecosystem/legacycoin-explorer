@@ -7,9 +7,51 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
+	"strconv"
 	"time"
 )
+
+// diff1Target is the DarkGravityWave v3 difficulty-1 target. It matches the
+// formula used by the mining pool (DIFF1_TARGET) so explorer values agree.
+var diff1Target = mustBigInt("0x00007fffff000000000000000000000000000000000000000000000000000000")
+
+func mustBigInt(s string) *big.Int {
+	i, ok := new(big.Int).SetString(s, 0)
+	if !ok {
+		panic("bad bigint constant: " + s)
+	}
+	return i
+}
+
+// BitsToDifficulty converts a compact nBits hex string (e.g. "1e2efe5a") to
+// the DGW3 per-block difficulty.
+func BitsToDifficulty(bitsHex string) float64 {
+	if bitsHex == "" {
+		return 0
+	}
+	bits, err := strconv.ParseUint(bitsHex, 16, 32)
+	if err != nil {
+		return 0
+	}
+	mantissa := bits & 0xffffff
+	exponent := (bits >> 24) & 0xff
+	target := new(big.Int)
+	if exponent <= 3 {
+		target.Rsh(new(big.Int).SetUint64(mantissa), uint(8*(3-exponent)))
+	} else {
+		target.Lsh(new(big.Int).SetUint64(mantissa), uint(8*(exponent-3)))
+	}
+	if target.Sign() == 0 {
+		return 0
+	}
+	d, _ := new(big.Rat).Quo(
+		new(big.Rat).SetInt(diff1Target),
+		new(big.Rat).SetInt(target),
+	).Float64()
+	return d
+}
 
 const maxRetries = 5
 const retryDelay = 500 * time.Millisecond
@@ -183,6 +225,7 @@ type Block struct {
 	Tx                []string `json:"tx"`
 	Size              int      `json:"size"`
 	Hex               string   `json:"hex"`
+	Difficulty        float64  `json:"difficulty"`
 	Confirmations     int64    `json:"confirmations"`
 }
 
@@ -200,7 +243,33 @@ func (c *RPCClient) GetBlock(hash string) (*Block, error) {
 	if b.Size == 0 && b.Hex != "" {
 		b.Size = len(b.Hex) / 2
 	}
+	// legacycoind does not report a numeric difficulty either; compute the DGW3
+	// per-block difficulty from the block's compact bits.
+	if b.Difficulty <= 0 && b.Bits != "" {
+		b.Difficulty = BitsToDifficulty(b.Bits)
+	}
 	return &b, nil
+}
+
+// GetCurrentDifficulty returns the current network difficulty. legacycoind
+// omits it from getinfo/getmininginfo, so it is derived from
+// getblockchaininfo's current_bits using the DGW3 formula.
+func (c *RPCClient) GetCurrentDifficulty() (float64, error) {
+	raw, err := c.call("getblockchaininfo")
+	if err != nil {
+		return 0, err
+	}
+	var b struct {
+		CurrentBits string  `json:"current_bits"`
+		Difficulty  float64 `json:"difficulty"`
+	}
+	if err := json.Unmarshal(raw, &b); err != nil {
+		return 0, err
+	}
+	if b.Difficulty > 0 {
+		return b.Difficulty, nil
+	}
+	return BitsToDifficulty(b.CurrentBits), nil
 }
 
 func (c *RPCClient) GetBlockAtHeight(height int64) (*Block, error) {

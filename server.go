@@ -89,6 +89,11 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		data.NodeOnline = true
 		if info, err := s.cachedInfo(); err == nil {
 			data.Info = info
+			// legacycoind reports no difficulty via getinfo; fill the DGW3
+			// per-block difficulty of the current tip.
+			if d, derr := s.rpc.GetCurrentDifficulty(); derr == nil {
+				info.Difficulty = d
+			}
 		}
 		if mining, err := s.cachedMining(); err == nil {
 			data.Mining = mining
@@ -225,10 +230,14 @@ func (s *Server) handleAPIStats(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "node unavailable", 503)
 		return
 	}
+	difficulty, err := s.rpc.GetCurrentDifficulty()
+	if err != nil {
+		difficulty = info.Difficulty
+	}
 	jsonOK(w, map[string]interface{}{
 		"blocks":       info.Blocks,
 		"connections":  info.Connections,
-		"difficulty":   info.Difficulty,
+		"difficulty":   difficulty,
 		"hashrate":     mining.HashesPerSec,
 		"pooled_tx":    mining.PooledTx,
 		"node_version": info.Version,
