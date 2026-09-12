@@ -8,49 +8,61 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 // Server is the block explorer HTTP server.
 type Server struct {
-	rpc       *RPCClient
-	cache     *Cache
-	tmpl      *template.Template
-	port      int
-	mux       *http.ServeMux
-	bookmarks *BookmarkStore
+	rpc            *RPCClient
+	cache          *Cache
+	tmpl           *template.Template
+	port           int
+	mux            *http.ServeMux
+	bookmarks      *BookmarkStore
+	recentMu       sync.Mutex
+	recentFallback map[string][]*Block
 }
 
 // NewServer creates a new explorer server.
 func NewServer(rpc *RPCClient, port int, dataDir string) *Server {
 	s := &Server{
-		rpc:       rpc,
-		cache:     NewCache(),
-		port:      port,
-		mux:       http.NewServeMux(),
-		bookmarks: NewBookmarkStore(dataDir),
+		rpc:            rpc,
+		cache:          NewCache(),
+		port:           port,
+		mux:            http.NewServeMux(),
+		recentFallback: map[string][]*Block{},
+		bookmarks:      NewBookmarkStore(dataDir),
 	}
 	s.tmpl = template.Must(template.New("").Funcs(template.FuncMap{
-		"formatTime":  formatTime,
-		"formatLBTC":  formatLBTC,
-		"truncate":    truncate,
-		"add":         func(a, b int64) int64 { return a + b },
-		"sub":         func(a, b int64) int64 { return a - b },
-		"blockReward": blockRewardForHeight,
-		"safeHTML":    func(s string) template.HTML { return template.HTML(s) },
+		"safeHTML":       func(s string) template.HTML { return template.HTML(s) },
+		"formatTime":     formatTime,
+		"formatLBTC":     formatLBTC,
+		"truncate":       truncate,
+		"add":            func(a, b int64) int64 { return a + b },
+		"sub":            func(a, b int64) int64 { return a - b },
+		"blockReward":    blockRewardForHeight,
+		"formatHashRate": formatHashRate,
 	}).Parse(allTemplates))
 	s.routes()
 	return s
 }
 
 func (s *Server) routes() {
-	s.mux.HandleFunc("/", s.handleHome)
+	//s.mux.HandleFunc("/", s.handleHome)
+	s.mux.HandleFunc("/", s.handleHomeEx) // ← заменили на новый хендлер
+	s.mux.HandleFunc("/exp-A", s.handleExpA)
+	s.mux.HandleFunc("/exp-1", s.handleExp1)
+	s.mux.HandleFunc("/exp-2", s.handleExp2)
+	s.mux.HandleFunc("/lbtc.png", s.handleLogo)
+	s.mux.HandleFunc("/status", s.handleStatusPage())
 	s.mux.HandleFunc("/block/", s.handleBlock)
 	s.mux.HandleFunc("/blocks", s.handleBlocks)
 	s.mux.HandleFunc("/tx/", s.handleTx)
 	s.mux.HandleFunc("/address/", s.handleAddress)
 	s.mux.HandleFunc("/search", s.handleSearch)
 	s.mux.HandleFunc("/api/stats", s.handleAPIStats)
+	s.mux.HandleFunc("/api/status", s.handleAPIStatus())
 	s.mux.HandleFunc("/api/blocks", s.handleAPIBlocks)
 	s.mux.HandleFunc("/api/block/", s.handleAPIBlock)
 	s.mux.HandleFunc("/api/tx/", s.handleAPITx)
@@ -70,12 +82,13 @@ func (s *Server) Start() {
 // ── Page handlers ─────────────────────────────────────────────────────────────
 
 type homeData struct {
-	NodeOnline  bool
-	Info        *NodeInfo
-	Mining      *MiningInfo
+	NodeOnline   bool
+	Info         *NodeInfo
+	Mining       *MiningInfo
+	NetHashrate  float64
 	RecentBlocks []*Block
-	Bookmarks   []*Bookmark
-	Error       string
+	Bookmarks    []*Bookmark
+	Error        string
 }
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
@@ -97,6 +110,9 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		}
 		if mining, err := s.cachedMining(); err == nil {
 			data.Mining = mining
+		}
+		if hps, herr := s.rpc.GetNetworkHashPerSec(); herr == nil {
+			data.NetHashrate = hps
 		}
 		if blocks, err := s.cachedRecentBlocks(20); err == nil {
 			data.RecentBlocks = blocks
@@ -124,11 +140,17 @@ func (s *Server) handleBlocks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var blocks []*Block
+	fails := 0
 	for h := start; h >= end; h-- {
 		b, err := s.rpc.GetBlockAtHeight(h)
 		if err != nil {
-			break
+			fails++
+			if fails >= 2 {
+				break
+			}
+			continue
 		}
+		fails = 0
 		b.Confirmations = tip - h + 1
 		blocks = append(blocks, b)
 	}
@@ -234,11 +256,12 @@ func (s *Server) handleAPIStats(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		difficulty = info.Difficulty
 	}
+	hashrate, _ := s.rpc.GetNetworkHashPerSec()
 	jsonOK(w, map[string]interface{}{
 		"blocks":       info.Blocks,
 		"connections":  info.Connections,
 		"difficulty":   difficulty,
-		"hashrate":     mining.HashesPerSec,
+		"hashrate":     hashrate,
 		"pooled_tx":    mining.PooledTx,
 		"node_version": info.Version,
 	})
@@ -272,14 +295,14 @@ func (s *Server) handleAPIBlock(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 	txid := strings.TrimPrefix(r.URL.Path, "/tx/")
 	txid = strings.TrimSpace(txid)
-	
+
 	if !isTxid(txid) {
 		s.render(w, "error", map[string]interface{}{
 			"Message": fmt.Sprintf("Invalid transaction ID: %s", txid),
 		})
 		return
 	}
-	
+
 	tx, block, err := s.rpc.FindTransaction(txid)
 	if err != nil {
 		s.render(w, "error", map[string]interface{}{
@@ -287,7 +310,7 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	s.render(w, "tx", map[string]interface{}{
 		"Tx":    tx,
 		"Block": block,
@@ -297,14 +320,14 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAddress(w http.ResponseWriter, r *http.Request) {
 	address := strings.TrimPrefix(r.URL.Path, "/address/")
 	address = strings.TrimSpace(address)
-	
+
 	if !isAddress(address) {
 		s.render(w, "error", map[string]interface{}{
 			"Message": fmt.Sprintf("Invalid address: %s", address),
 		})
 		return
 	}
-	
+
 	addrInfo, err := s.rpc.ValidateAddress(address)
 	if err != nil {
 		s.render(w, "error", map[string]interface{}{
@@ -312,12 +335,12 @@ func (s *Server) handleAddress(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
+
 	txs, err := s.rpc.FindAddressTxs(address, 1000)
 	if err != nil {
 		txs = []*RawTransaction{}
 	}
-	
+
 	s.render(w, "address", map[string]interface{}{
 		"Address": addrInfo,
 		"Txs":     txs,
@@ -380,16 +403,33 @@ func (s *Server) cachedRecentBlocks(n int) ([]*Block, error) {
 		return v.([]*Block), nil
 	}
 	blocks, err := s.rpc.GetRecentBlocks(n)
+	if err == nil && len(blocks) == 0 {
+		time.Sleep(250 * time.Millisecond)
+		blocks, err = s.rpc.GetRecentBlocks(n)
+	}
 	if err != nil {
+		if fb, ok := s.recentFallback[key]; ok && len(fb) > 0 {
+			return fb, nil
+		}
 		return nil, err
 	}
-	s.cache.Set(key, blocks, 10*time.Second)
+	if len(blocks) > 0 {
+		s.cache.Set(key, blocks, 30*time.Second)
+		s.recentMu.Lock()
+		s.recentFallback[key] = blocks
+		s.recentMu.Unlock()
+		return blocks, nil
+	}
+	if fb, ok := s.recentFallback[key]; ok {
+		return fb, nil
+	}
 	return blocks, nil
 }
 
 // ── Render helper ─────────────────────────────────────────────────────────────
 
 func (s *Server) render(w http.ResponseWriter, name string, data interface{}) {
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
 		log.Printf("Template error [%s]: %v", name, err)
@@ -443,6 +483,19 @@ func (s *Server) handleAPIBookmarkDelete(w http.ResponseWriter, r *http.Request)
 }
 
 // ── Utility ───────────────────────────────────────────────────────────────────
+
+func formatHashRate(h float64) string {
+	switch {
+	case h >= 1e9:
+		return fmt.Sprintf("%.2f GH/s", h/1e9)
+	case h >= 1e6:
+		return fmt.Sprintf("%.2f MH/s", h/1e6)
+	case h >= 1e3:
+		return fmt.Sprintf("%.2f KH/s", h/1e3)
+	default:
+		return fmt.Sprintf("%.2f H/s", h)
+	}
+}
 
 func formatTime(unix uint32) string {
 	t := time.Unix(int64(unix), 0).UTC()

@@ -53,8 +53,8 @@ func BitsToDifficulty(bitsHex string) float64 {
 	return d
 }
 
-const maxRetries = 5
-const retryDelay = 500 * time.Millisecond
+const maxRetries = 3
+const retryDelay = 250 * time.Millisecond
 
 // RPCClient connects to a running legacycoind node via JSON-RPC.
 type RPCClient struct {
@@ -142,16 +142,16 @@ func (c *RPCClient) call(method string, params ...interface{}) (json.RawMessage,
 
 // NodeInfo holds data from getinfo.
 type NodeInfo struct {
-	Version         string  `json:"version"`
-	Blocks          int64   `json:"blocks"`
-	Connections     int     `json:"connections"`
-	Difficulty      float64 `json:"difficulty"`
-	Errors          string  `json:"errors"`
-	Network         string  `json:"network"`
-	Coin            string  `json:"coin"`
-	Ticker          string  `json:"ticker"`
-	CoreVersion     string  `json:"core_version"`
-	BestBlockHash   string  `json:"bestblockhash"`
+	Version       string  `json:"version"`
+	Blocks        int64   `json:"blocks"`
+	Connections   int     `json:"connections"`
+	Difficulty    float64 `json:"difficulty"`
+	Errors        string  `json:"errors"`
+	Network       string  `json:"network"`
+	Coin          string  `json:"coin"`
+	Ticker        string  `json:"ticker"`
+	CoreVersion   string  `json:"core_version"`
+	BestBlockHash string  `json:"bestblockhash"`
 }
 
 func (c *RPCClient) GetInfo() (*NodeInfo, error) {
@@ -292,11 +292,17 @@ func (c *RPCClient) GetRecentBlocks(n int) ([]*Block, error) {
 		return nil, err
 	}
 	blocks := make([]*Block, 0, n)
+	fails := 0
 	for h := tip; h >= 0 && len(blocks) < n; h-- {
 		b, err := c.GetBlockAtHeight(h)
 		if err != nil {
-			break
+			fails++
+			if fails >= 2 {
+				break
+			}
+			continue
 		}
+		fails = 0
 		b.Confirmations = tip - h + 1
 		blocks = append(blocks, b)
 	}
@@ -313,9 +319,9 @@ func (c *RPCClient) Ping() bool {
 
 // TxInput holds a transaction input.
 type TxInput struct {
-	Txid         string `json:"txid"`
-	Vout         int    `json:"vout"`
-	ScriptSig    struct {
+	Txid      string `json:"txid"`
+	Vout      int    `json:"vout"`
+	ScriptSig struct {
 		Asm string `json:"asm"`
 		Hex string `json:"hex"`
 	} `json:"scriptSig"`
@@ -336,17 +342,17 @@ type TxOutput struct {
 
 // RawTransaction holds raw transaction data.
 type RawTransaction struct {
-	Txid     string      `json:"txid"`
-	Hash     string      `json:"hash"`
-	Version  int         `json:"version"`
-	Size     int         `json:"size"`
-	Vin      []TxInput   `json:"vin"`
-	Vout     []TxOutput  `json:"vout"`
-	Blockhash string     `json:"blockhash"`
-	Height    int64      `json:"blockheight"`
-	Confirmations int64  `json:"confirmations"`
-	Time     uint32      `json:"time"`
-	Blocktime uint32     `json:"blocktime"`
+	Txid          string     `json:"txid"`
+	Hash          string     `json:"hash"`
+	Version       int        `json:"version"`
+	Size          int        `json:"size"`
+	Vin           []TxInput  `json:"vin"`
+	Vout          []TxOutput `json:"vout"`
+	Blockhash     string     `json:"blockhash"`
+	Height        int64      `json:"blockheight"`
+	Confirmations int64      `json:"confirmations"`
+	Time          uint32     `json:"time"`
+	Blocktime     uint32     `json:"blocktime"`
 }
 
 func (c *RPCClient) GetRawTransaction(txid string) (*RawTransaction, error) {
@@ -362,12 +368,12 @@ func (c *RPCClient) GetRawTransaction(txid string) (*RawTransaction, error) {
 
 // AddressInfo holds address validation data.
 type AddressInfo struct {
-	Address    string `json:"address"`
-	IsValid    bool   `json:"isvalid"`
-	IsMine     bool   `json:"ismine"`
-	IsScript   bool   `json:"isscript"`
-	IsWatchOnly bool  `json:"iswatchonly"`
-	PubKeyHash string `json:"pubkey_hash_hex"`
+	Address     string `json:"address"`
+	IsValid     bool   `json:"isvalid"`
+	IsMine      bool   `json:"ismine"`
+	IsScript    bool   `json:"isscript"`
+	IsWatchOnly bool   `json:"iswatchonly"`
+	PubKeyHash  string `json:"pubkey_hash_hex"`
 }
 
 func (c *RPCClient) ValidateAddress(address string) (*AddressInfo, error) {
@@ -658,4 +664,21 @@ func (c *RPCClient) FindAddressTxs(address string, maxBlocks int) ([]*RawTransac
 		txs = append(txs, tx)
 	}
 	return txs, nil
+}
+
+// GetNetworkHashPerSec returns the estimated network hash rate (H/s) from
+// getnetworkhashps. The node does not report hashespersec in getmininginfo
+// (local miner hash is 0 when miner is stopped).
+func (c *RPCClient) GetNetworkHashPerSec() (float64, error) {
+	raw, err := c.call("getnetworkhashps")
+	if err != nil {
+		return 0, err
+	}
+	var resp struct {
+		HPS float64 `json:"hps"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return 0, err
+	}
+	return resp.HPS, nil
 }
