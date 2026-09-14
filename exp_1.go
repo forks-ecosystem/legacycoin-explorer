@@ -2,25 +2,26 @@
 package explorer
 
 import (
-	"html/template"
-	"net/http"
+    "html/template"
+    "log"
+    "net/http"
 )
 
 var exp1Template = template.Must(template.New("exp1").Funcs(template.FuncMap{
-	"formatTime":  formatTime,
-	"formatLBTC":  formatLBTC,
-	"truncate":    truncate,
-	"blockReward": blockRewardForHeight,
+    "formatTime":  formatTime,
+    "formatLBTC":  formatLBTC,
+    "truncate":    truncate,
+    "blockReward": blockRewardForHeight,
 }).Parse(`<style>
 :root{--gold:#D4A017;--black:#080808;--dark:#0F0F0F;--panel:#040404;--panel2:#1a1a1a;--border:#222;--text:#E8E8E8;--muted:#888;--green:#22C55E;--red:#EF4444;--mono:'Courier New',monospace;}
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;overflow:hidden;}
 body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;line-height:1.6;display:flex;flex-direction:column;}
-.pt{font-size:21px;font-weight:700;margin-bottom:14px;padding-left:20px;flex-shrink:0;}
+.pt{font-size:21px;font-weight:700;margin-bottom:14px;flex-shrink:0;padding-top:10px}
 .pt span{color:var(--gold);}
-.tw{flex:1;min-height:0;overflow:auto;border-top:1px solid var(--border);}
-table{width:100%;border-collapse:separate;border-spacing:0;}
-thead th{position:sticky;top:0;z-index:5;background:var(--panel2);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;padding:10px 13px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
+.tw{flex:1;min-height:0;overflow:auto;}
+table{border-collapse:separate;border-spacing:0;}
+thead th{position:sticky;top:0;z-index:5;background:linear-gradient(to right,var(--panel2),#000);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;padding:10px 13px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
 tbody tr{border-bottom:1px solid var(--border);}
 tbody tr:hover{background:var(--panel);}
 tbody td{padding:10px 13px;font-size:13px;vertical-align:middle;}
@@ -33,19 +34,15 @@ a:hover{text-decoration:underline;}
 .offline{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red);padding:13px 17px;margin-bottom:18px;font-size:14px;}
 .sel{background:var(--panel2);box-shadow:inset 3px 0 0 #3B82F6;}
 .tw.hdcur thead tr{box-shadow:inset 3px 0 0 #3B82F6;}
-.lcCard{position:fixed;top:8px;right:8px;bottom:8px;width:340px;min-width:160px;max-width:94%;background:var(--dark);border:1px solid var(--gold);border-radius:8px;z-index:120;display:none;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.65);}
-.lcHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);color:var(--gold);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:1px;flex-shrink:0;}
-.lcX{cursor:pointer;color:var(--muted);font-size:15px;padding:0 4px;}.lcX:hover{color:var(--red);}
-.lcBody{padding:10px 14px;overflow-y:auto;flex:1;min-height:0;font-size:12px;}
-.lcCard .ld{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);}.lcCard .ld span{color:var(--muted);flex-shrink:0;}.lcCard .ld b{font-family:var(--mono);text-align:right;word-break:break-all;}
+.curl{box-shadow:inset 3px 0 0 #3B82F6;}
 </style>
-<div class="pt">Latest <span>Blocks</span></div>
+<div class=pt><span style=color:#555>1.</span> Latest <span>Blocks</span></div>
 {{if .Error}}<div class="offline">⚠ {{.Error}}</div>{{end}}
 <div class="tw">
 <table>
 <thead>
 <tr>
-  <th>
+  <th id="curhdr">
   <th>Height</th>
   <th>Hash</th>
   <th>Time (UTC)</th>
@@ -57,10 +54,10 @@ a:hover{text-decoration:underline;}
 </thead>
 <tbody>
 {{range .RecentBlocks}}
-<tr data-height="{{.Height}}">
+<tr data-height="{{.Height}}" data-hash="{{.Hash}}">
   <td>
-  <td><a href="/block/{{.Height}}" target="_top">{{.Height}}</a></td>
-  <td class="hash"><a href="/block/{{.Hash}}" target="_top">{{truncate .Hash 32}}</a></td>
+  <td              onclick="parent.lc('/exp-block/{{.Height}}')">{{.Height}}</td>
+  <td class="hash" onclick="parent.lc('/exp-block/{{.Hash  }}')">{{truncate .Hash 32}}</td>
   <td style="color:var(--muted);font-size:12px;">{{formatTime .Time}}</td>
   <td>{{len .Tx}}</td>
   <td style="color:var(--gold);font-family:var(--mono);font-size:12px;">{{formatLBTC (blockReward .Height)}}</td>
@@ -70,51 +67,29 @@ a:hover{text-decoration:underline;}
 {{else}}
 <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px;">No blocks yet.</td></tr>
 {{end}}
-<tr class="spacer"><td colspan="8"></td></tr><tr class="spacer"><td colspan="8"></td></tr>
-</tbody>
+<tr class=spacer><td colspan="8"></td></tr><tr class="spacer"><td colspan="8"></td></tr>
+<tr><td><tr><td></tbody>
+<thead><tr><td><th>END</div></thead>
 </table>
 </div>
 <script>
-var lcCard=null;
-function lcInit(){if(lcCard)return;var d=document.createElement('div');d.className='lcCard';d.innerHTML='<div class="lcHead"><span>Block card</span><span class="lcX" onclick="lcClose()">✕</span></div><div class="lcBody"></div>';document.body.appendChild(d);lcCard=d;}
-function lcIsOpen(){return lcCard&&lcCard.style.display!=='none';}
-function lcClose(){if(lcCard)lcCard.style.display='none';}
-var lcSeq=0;
-function lcLoad(h,retry){
-  lcInit();
-  var seq=++lcSeq;
-  var d=lcCard,body=d.querySelector('.lcBody');
-  fetch('/api/block/'+h).then(function(r){return r.json();}).then(function(b){
-    if(seq!==lcSeq)return;
-    if(!b||b.error){if(retry<2){setTimeout(function(){lcLoad(h,retry+1);},350);return;}body.innerHTML='<div style="color:#EF4444;padding:8px;">node busy — press Enter to retry</div>';return;}
-    body.innerHTML=''
-      +'<div class="ld"><span>Height</span><b>'+b.height+'</b></div>'
-      +'<div class="ld"><span>Hash</span><b>'+b.hash+'</b></div>'
-      +'<div class="ld"><span>Time</span><b>'+new Date((b.time||0)*1000).toUTCString()+'</b></div>'
-      +'<div class="ld"><span>Transactions</span><b>'+(b.tx?b.tx.length:'-')+'</b></div>'
-      +'<div class="ld"><span>Size</span><b>'+(b.size||'-')+' B</b></div>'
-      +'<div class="ld"><span>Difficulty</span><b>'+(b.difficulty?b.difficulty.toFixed(6):'-')+'</b></div>'
-      +'<div class="ld"><span>nBits</span><b>'+b.bits+'</b></div>'
-      +'<div class="ld"><span>Nonce</span><b>'+b.nonce+'</b></div>'
-      +'<div class="ld"><span>Confirmations</span><b>'+b.confirmations+'</b></div>'
-      +'<div style="margin-top:12px"><a href="/block/'+b.height+'" target="_top">Open block page →</a></div>';
-  }).catch(function(){if(seq===lcSeq&&retry<2)setTimeout(function(){lcLoad(h,retry+1);},350);});
-}
-function lcOpen(h){lcInit();lcCard.querySelector('.lcHead span').textContent='Block #'+h;lcCard.querySelector('.lcBody').innerHTML='<div style="color:var(--muted);padding:8px;">Loading…</div>';lcCard.style.display='flex';lcLoad(h,0);}
-function lcRows(){return document.querySelectorAll('tbody tr:not(.spacer)');}
+function lcRows(){return document.querySelectorAll('tbody tr[data-height]');}
 function lcSelRow(){return document.querySelector('tbody tr.sel');}
 function lcScroll(r){
   var tw=r.closest('.tw');if(!tw)return;
   var th=tw.querySelector('thead');var oh=th?th.offsetHeight+2:0;
-  var rowH=r.offsetHeight||36,pad=rowH*1.6;
+  var rowH=r.offsetHeight||36;
+  var padTop=rowH; if(oh>0)padTop=rowH*2+10;
+  var padBot=rowH*1.6;
   var y=0,el=r;while(el&&el!==tw){y+=el.offsetTop;el=el.offsetParent;if(!el)break;}
   var twH=tw.clientHeight;
-  if(y<tw.scrollTop+oh+pad)tw.scrollTop=y-oh-pad;
-  else if(y+rowH>tw.scrollTop+twH-pad)tw.scrollTop=y+rowH-twH+pad;
+  if(y<tw.scrollTop+oh+padTop)tw.scrollTop=y-oh-padTop;
+  else if(y+rowH>tw.scrollTop+twH-padBot)tw.scrollTop=y+rowH-twH+padBot;
 }
 function lcSelect(r){
   var old=lcSelRow();if(old&&old!==r)old.classList.remove('sel');
   r.classList.add('sel');lcScroll(r);
+  var c=document.getElementById('curhdr');if(c)c.classList.remove('curl');
   var t=r.closest('.tw');if(t)t.classList.remove('hdcur');
 }
 function lcNav(dir,big){
@@ -127,32 +102,52 @@ function lcNav(dir,big){
   lcSelect(rows[i]);
 }
 function lcEnd(last){var rows=lcRows();if(!rows.length)return;lcSelect(rows[last?rows.length-1:0]);}
-(function(){var t=document.querySelector('.tw');if(t)t.classList.add('hdcur');})();
+(function(){var c=document.getElementById('curhdr');if(c)c.classList.add('curl');})();
 document.addEventListener('click',function(e){
+  var c=document.getElementById('curhdr');if(c)c.classList.remove('curl');
   var t=document.querySelector('.tw');if(t)t.classList.remove('hdcur');
-  var tr=e.target&&e.target.closest?e.target.closest('tbody tr:not(.spacer)'):null;
+  var tr=e.target&&e.target.closest?e.target.closest('tbody tr[data-height]'):null;
   if(tr)lcSelect(tr);
 });
 document.addEventListener('keydown',function(e){
+  var k=e.key
   if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'){
-    if(e.key==='Escape'||e.keyCode===27){e.preventDefault();if(e.target.value){e.target.value='';}else e.target.blur();}
+    if(k==='Escape'){e.preventDefault();if(e.target.value){e.target.value='';}else e.target.blur();}
+    if(k==='ArrowLeft'  && e.ctrlKey){e.preventDefault();setBL();return}
+    if(k==='ArrowRight' && e.ctrlKey){e.preventDefault();setBR();return}
     return;
   }
-  var k=e.key,c=e.keyCode;
-  if(k==='1'||c===49||c===97){try{parent.document.getElementById('fB').src='/exp-2';}catch(x){}return;}
-  if(k==='2'||c===50||c===98){try{parent.document.getElementById('fB').src='/exp-2';}catch(x){}return;}
-  if(k==='Backspace'||c===8){try{var fi=parent.document.querySelector('.sf input');if(fi){e.preventDefault();fi.focus();}}catch(x){}return;}
-  if(k==='Enter'||c===13){var sl=document.querySelector('tbody tr.sel[data-height]');if(sl){e.preventDefault();lcOpen(sl.getAttribute('data-height'));}return;}
-  if(k==='Escape'||c===27){if(lcIsOpen()){lcClose();return;}return;}
-  if(k==='ArrowDown'||c===40){e.preventDefault();lcNav(1,false);return;}
-  if(k==='ArrowUp'||c===38){e.preventDefault();lcNav(-1,false);return;}
-  if(k==='PageDown'||c===34){e.preventDefault();lcNav(1,true);return;}
-  if(k==='PageUp'||c===33){e.preventDefault();lcNav(-1,true);return;}
-  if(k==='Home'||c===36){e.preventDefault();lcEnd(false);return;}
-  if(k==='End'||c===35){e.preventDefault();lcEnd(true);return;}
-  if(k==='ArrowLeft'||c===37){var l=document.querySelector('[data-dir="prev"]');if(l&&l.href){e.preventDefault();location.href=l.href;}return;}
-  if(k==='ArrowRight'||c===39){var l=document.querySelector('[data-dir="next"]');if(l&&l.href){e.preventDefault();location.href=l.href;}return;}
+  if(k==='Enter'     ){var sl=document.querySelector('tbody tr.sel[data-height]');if(sl){
+                       var sd='/exp-block/'+sl.getAttribute('data-height')
+                       e.preventDefault();parent.lc(     sd)};return}
+  if(k==='1'         ){e.preventDefault();parent.lf('/exp-1');return}
+  if(k==='2'         ){e.preventDefault();parent.lf('/exp-2');return}
+  if(k==='3'         ){e.preventDefault();parent.lf('/exp-3');return}
+  if(k==='4'         ){e.preventDefault();top.location.href='/home';return}
+  if(k==='Backspace' ){e.preventDefault();parent.setSF(     );return}
+  if(k==='Escape'    ){e.preventDefault();parent.clkHH(     );return}
+  if(k==='ArrowLeft' ){e.preventDefault();parent.setBL(     );return}
+  if(k==='ArrowRight'){e.preventDefault();parent.setBR(     );return}
+  if(k==='ArrowDown' ){e.preventDefault();lcNav( 1,false    );return}
+  if(k==='ArrowUp'   ){e.preventDefault();lcNav(-1,false    );return}
+  if(k==='PageDown'  ){e.preventDefault();lcNav( 1,true     );return}
+  if(k==='PageUp'    ){e.preventDefault();lcNav(-1,true     );return}
+  if(k==='Home'      ){e.preventDefault();lcEnd(false       );return}
+  if(k==='End'       ){e.preventDefault();lcEnd(true        );return}
 });
+(function(){
+  if(document.querySelector('.offline')||!document.querySelector('tbody tr[data-height]')){
+    var key=location.pathname.replace(/[^a-z0-9]+/gi,'-')+':retry';
+    var n=(parseInt(localStorage.getItem(key)||'0',10)||0)+1;
+    if(n<=4){localStorage.setItem(key,n);setTimeout(function(){location.reload();},n*4000);}
+    else {localStorage.removeItem(key);}
+  }else{
+    try{localStorage.removeItem(location.pathname.replace(/[^a-z0-9]+/gi,'-')+':retry');}catch(x){}
+  }
+})();
+window.focus();
+document.body.tabIndex=-1;
+document.body.focus();
 </script>`))
 
 func (s *Server) handleExp1(w http.ResponseWriter, r *http.Request) {
@@ -160,17 +155,14 @@ func (s *Server) handleExp1(w http.ResponseWriter, r *http.Request) {
 		RecentBlocks []*Block
 		Error        string
 	}{}
-
-	if s.rpc.Ping() {
-		if blocks, err := s.cachedRecentBlocks(20); err == nil {
-			data.RecentBlocks = blocks
-		} else {
-			data.Error = err.Error()
-		}
+	if blocks, err := s.cachedRecentBlocks(20); err == nil {
+		data.RecentBlocks = blocks
 	} else {
 		data.Error = "Cannot connect to legacycoind node"
 	}
-
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	exp1Template.Execute(w, data)
+	if err := exp1Template.Execute(w, data); err != nil {
+		log.Printf("handleExp1 template error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }

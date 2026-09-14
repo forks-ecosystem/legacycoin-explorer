@@ -385,6 +385,30 @@ func (c *RPCClient) ValidateAddress(address string) (*AddressInfo, error) {
 	return &info, json.Unmarshal(raw, &info)
 }
 
+// ── Address balance ─────────────────────────────────────────────────────────
+
+// AddressBalance holds the node's address-index balance (getaddressbalance).
+type AddressBalance struct {
+	Address           string  `json:"address"`
+	IsConfirmedOnly   bool    `json:"addressindex_confirmed_only"`
+	Balance           float64 `json:"balance"`
+	BalanceBaseUnits  int64   `json:"balance_base_units"`
+	Received          float64 `json:"received"`
+	ReceivedBaseUnits int64   `json:"received_base_units"`
+}
+
+func (c *RPCClient) GetAddressBalance(address string) (*AddressBalance, error) {
+	raw, err := c.call("getaddressbalance", address)
+	if err != nil {
+		return nil, err
+	}
+	var b AddressBalance
+	if err := json.Unmarshal(raw, &b); err != nil {
+		return nil, err
+	}
+	return &b, nil
+}
+
 // ── Block hex parsing ────────────────────────────────────────────────────────
 
 // GetBlockHex returns the raw block hex string.

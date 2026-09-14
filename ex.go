@@ -11,134 +11,160 @@ var exTemplate = template.Must(template.New("ex").Parse(`
 <html lang=ru>
 <head>
 <meta charset=UTF-8>
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name=viewport content="width=device-width,initial-scale=1.0">
+<link rel=icon href=/favicon.ico>
 <title>{{.Title}}</title>
 <style>
-* { box-sizing: border-box; }
-body{ margin: 0; padding: 0; font-family: 'Arial', sans-serif; background-color: #010101; color: #e6e9ef; overflow: hidden;}
-nav{  background:var(--dark);  border-bottom:1px solid var(--border);  padding:0 40px;  display:flex;  align-items:center;  gap:28px;  height:54px;  position:sticky;  top:0;  z-index:100;}
-.brand{  font-size:17px;  font-weight:700;  color:var(--gold);  letter-spacing:1px;  white-space:nowrap;  text-decoration:none;}
-.brand small{  font-size:11px;  font-weight:400;  color:var(--muted);  margin-left:5px;}
-.navl{  display:flex;  gap:20px;  flex:1;}
-.navl a{  color:var(--muted);  font-size:13px;  text-decoration:none;}
-.navl a:hover{  color:var(--gold);  text-decoration:none;}
-.sf{  display:flex;  margin-left:auto;}
-.sf input{  background:var(--panel);  border:1px solid var(--border);  border-right:none;  color:var(--text);  padding:6px 12px;
-  font-size:13px;  width:280px;  font-family:var(--mono);  outline:none;
-}
-.sf input:focus{  border-color:var(--gold);}
-.sf button{  background:var(--gold);  color:var(--black);  border:none;  padding:6px 14px;
-  cursor:pointer;  font-size:13px;  font-weight:700;
-}
-.brand{font-size:17px;font-weight:700;color:var(--gold);letter-spacing:1px;white-space:nowrap;}.brand.small{font-size:11px;font-weight:400;color:var(--muted);margin-left:5px;}
-.navl{display:flex;gap:20px;flex:1;}.navl a{color:var(--muted);font-size:13px;}.navl a:hover{color:var(--gold);text-decoration:none;}
-:root{
+:root {
   --gold:#D4A017;
   --black:#080808;
   --dark:#0F0F0F;
   --panel:#040404;
-  --panel2:#1a1a1a;
   --border:#222;
   --text:#E8E8E8;
   --muted:#888;
-  --green:#22C55E;
-  --red:#EF4444;
-  --mono:'Courier New',monospace;
+  --mono:'Courier New', monospace;
 }
-.DA { position:fixed;    top: 0px; right:0; bottom: 0px; left:  0px; }
-.DB { position:fixed;    top:66px; right:0; bottom: 0px; left:220px; }
-.DC { position:fixed;    top:40px; right:0; bottom: 0px; left:100%; background:linear-gradient(to right,#181818,#111111 10%);}
-.DD { position:fixed; height: 0px; right:0; bottom:38px; left:0; z-index: 1000; }
-.FA { height:100%;width:100%;border:none;}
-.FC { height:100%;width:100%;border:none;}
-.CP { position: absolute; bottom: 3px; left: 0; right: 0; display: flex; align-items: center; padding: 0 8px; }
-.EX { position: fixed; top: 110px; right: 18px; bottom: 0; width: 40px; height: 110px; overflow: hidden; cursor: pointer; text-align: center; }
-#PR { flex:1;height:0px;accent-color:#58a6ff;cursor:pointer; }
-.TL { position:fixed;top:13px;left:3px;cursor:pointer}
-.TR { position:fixed;top:13px;left:3px;cursor:pointer}
-.content { position: fixed; top: 0; right: 0; bottom: 0; left: 250px; padding: 0; }
-footer{position:fixed;bottom:0;left:220px;right:0;z-index:80;
-background:linear-gradient(to right,#000,#333,#000);border-top:1px solid var(--border);padding:13px 28px;text-align:center;
-font-size:12px;color:var(--muted);}footer span{color:var(--gold);}
+*{box-sizing:border-box; }
+body{ margin:0;  padding:0;  font-family:Arial, sans-serif;  background:#010101;  color:var(--text);  overflow:hidden;}
+nav {  background:var(--dark);  padding:0 40px;  display:flex;  align-items:center;  gap:28px;
+  height:54px;  position:sticky;  top:0;  z-index:100;
+}
+#TL, #TR{position:fixed; top:14px; left:3px; cursor:pointer; z-index:150; }
+.brand{ font-size:17px;  font-weight:700;  color:var(--gold);  letter-spacing:1px;  white-space:nowrap;  text-decoration:none;}
+.brand small{ font-size:11px;  font-weight:400;  color:var(--muted);  margin-left:5px;}
+.navl{ display:flex;  gap:20px;  flex:1;}
+.navl a{ color:var(--muted);  font-size:13px;  text-decoration:none;}
+.navl a:hover{color:var(--gold); }
+.sf{ display:flex;  margin-left:auto;}
+.sf input{ background:var(--panel);  border:1px solid var(--border);  border-right:none;  color:var(--text);
+  padding:6px 12px;  font-size:13px;  width:280px;  font-family:var(--mono);  outline:none;
+}
+.sf input:focus{border-color:var(--gold); }
+.sf button {
+  background:var(--gold);  color:var(--black);  border:none;  padding:6px 14px;  cursor:pointer;
+  font-size:13px;  font-weight:700;
+}
+#DA{position:fixed; inset:0}
+#DB{position:fixed; top:56px; right:0; bottom:40px; left:220px}
+#DC{position:fixed; top:56px; right:0; bottom:40px; left:100%; background:linear-gradient(to right, #181818, #111 10%); }
+#DD{position:fixed; bottom:33px; left:0; right:0; height:18px; z-index:1000; cursor:ew-resize; }
+#KN {
+  position:absolute; top:50%; left:0; width:18px; height:18px; margin-top:-9px; border-radius:50%;
+  background:radial-gradient(circle at 35% 30%, #7fc2ff, #2a76d4 55%, #14335e);
+  box-shadow:0 0 12px rgba(88,166,255,.75), 0 0 3px rgba(0,0,0,.9), inset 0 0 5px rgba(255,255,255,.35);
+  border:1px solid #9cc6ff; cursor:ew-resize;
+}
+#DS{position:fixed; top:4px; right:40px; width:330px; height:50px; z-index:120; }
+.FA, .FC, .FS{height:100%; width:100%; border:none; }
+.CP{position:absolute; bottom:3px; left:0; right:0; display:flex; align-items:center; padding:0 8px; }
+footer {
+  position:fixed;  bottom:0;  left:220px;  right:0;  background:linear-gradient(to right, #000, #333, #000);
+  padding:13px 28px;  text-align:center;  font-size:12px;  color:var(--muted);
+}
+footer span{color:var(--gold); }
 </style>
 </head>
 <body>
-<nav><a href="/" class="brand">⛓ LegacyCoin <small>EXPLORER</small></a>
-<div class="navl"><a href="/">1. Home</a><a href="/blocks">2. All Blocks</a></div><form class="sf" action="/search".
-method="GET"><input type="text" name="q" placeholder="Height, hash, txid or address…"><button type="submit">→</button></form>
-</nav>
-<div id=DA class=DA><iframe name=fA id=fA class=FA src=/exp-A></iframe></div>
-<div id=DB class=DB><iframe name=fB id=fB class=FA src=/exp-1></iframe></div>
-<div id=DC class=DC><iframe name=fC id=fC class=FC           ></iframe></div>
-<div id="DD" class="DD">
-  <div class="CP">
-    <input type="range" id="PR" min="0" max="100" value="50">
-    <div id="TL" class="TL"><img onclick="clHH()" src="http://185.253.219.51:8484/hollaex/v.php?ix=myimg-Get&p4=hollaex" style="height:26px" alt="menu"></div>
-    <div id="TR" class="TR"><img onclick="clHH()" src="http://185.253.219.51:8484/hollaex/v.php?ix=myimg-Get&p4=hollaex-1" style="height:26px" alt="menu"></div>
+<nav>
+  <a href=/ class=brand>⛓ LegacyCoin <small>EXPLORER</small></a>
+  <div class=navl>
+    <a href=/exp-1 target=fB>1. Latest</a>
+    <a href=/exp-2 target=fB>2. All Blocks</a>
+    <a href=/exp-3 target=fB>3. API</a>
+    <a href=/home  target=_top>4. Home</a>
   </div>
-</div>
-<a href="/" class="logo" title="Home">
-<img src="/lbtc.png" alt="LBTC" style=position:fixed;top:60px;height:50px></a>
+</nav>
+<div id=DA><iframe name=fA id=fA class=FA src=/exp-a></iframe></div>
+<div id=DB><iframe name=fB id=fB class=FA src=/exp-1></iframe></div>
+<div id=DC><iframe name=fC id=fC class=FC            ></iframe></div>
+<div id=DD><div            id=KN></div></div>
+<div id=DS><iframe name=fS id=fS class=FS src=/exp-s></iframe></div>
+
+<a href=/ title="Home"><img src=/lbtc.png alt="LBTC" style=position:fixed;top:60px;height:50px></a>
+<img id=TL src=/left.png  alt="menu" title="Меню" onclick=clkHH() style=height:27px;display:inline>
+<img id=TR src=/right.png alt="menu" title="Меню" onclick=clkHH() style=height:27px;display:none>
+<footer><span>LegacyCoin (LBTC)</span> Block Explorer · CPU money for everyone</footer>
 <script>
-const DA=document.getElementById('DA');
-const DB=document.getElementById('DB');
-const fB=document.getElementById('fB');
-const DC=document.getElementById('DC');
-const PR=document.getElementById('PR');
-const TL=document.getElementById('TL');
-const TR=document.getElementById('TR');
-DB.style.left='220px';
-DC.style.left='100%';
-TR.style.display='none';
-let isDragging  =false;
-function lf(url){fB.src=url;}
-function clHH(){const db=DB.style.left
- if(DC.style.left=='100%'){
-  if(db=='220px'){DB.style.left='46px'; TR.style.display='table-row';TL.style.display='none';}
-  else           {DB.style.left='220px';TL.style.display='table-row';TR.style.display='none';}
- }else DC.style.left='100%'
+const DB=document.getElementById('DB')
+const DC=document.getElementById('DC')
+const KN=document.getElementById('KN')
+const fB=document.getElementById('fB')
+const fC=document.getElementById('fC')
+let _v=50, _drag=false, _x='100%', _z='220px', _n='46px'
+function lim(  n){ n=Math.round(n); return Math.max(0,Math.min(100,n))}
+function place(v){ var W=document.documentElement.clientWidth, d=KN.offsetWidth; KN.style.left=Math.round((v/100)*(W-d))+'px'; }
+function getPR( ){ return _v; }
+function setPR(n){ _v=lim(n); place(_v); }
+function fromX(x){ var W=document.documentElement.clientWidth, d=KN.offsetWidth; return lim((x-d/2)/(W-d)*100); }
+DB.style.left=_z;
+DC.style.left=_x;
+function setCard(val) {
+  var n=parseFloat(val);
+  const k=Math.max(0, Math.min(100,isFinite(n)?n:50));
+  DC.style.left=k+'%';
+  localStorage.setItem('panelPos',k);
+  setPR(k);
 }
-function clS(      ){k=PR.value;             CA.style.left=k+'%'}
-function setB(     ){k=PR.value;             DC.style.left=k+'%'                                          }
-function setBleft( ){k=PR.value;PR.value=--k;DC.style.left=k+'%';localStorage.setItem('panelPos',PR.value)}
-function setBright(){k=PR.value;PR.value=++k;DC.style.left=k+'%';localStorage.setItem('panelPos',PR.value)}
-PR.addEventListener('input',setB);
-PR.addEventListener('mousedown' ,function(e){isDragging=true; document.body.style.cursor='col-resize';});
-PR.addEventListener('touchstart',function(){isDragging=true;});
-document.addEventListener('mouseup',function(){
-  if(isDragging){
-     isDragging=false;
-     document.body.style.cursor='';
-     localStorage.setItem('panelPos',PR.value);
+function setBB(){setCard(_v  )}
+function setBL(){setCard(_v-1)}
+function setBR(){setCard(_v+1)}
+function lf(url){fB.src=url;DC.style.left='100%'}
+function lc(url){fC.src=url;setCard(_v)}
+function clkHH(){
+  if(  DC.style.left!==_x){DC.style.left=_x}else{
+    if(DB.style.left===_z){DB.style.left=_n}else{
+       DB.style.left  =_z
+    }
   }
-});
-document.addEventListener('touchend',function(){
-  if(isDragging){isDragging=false;localStorage.setItem('panelPos',PR.value);}
-});
-document.addEventListener('keydown',function(e){
-  var c=e.keyCode;
-  if(e.key==='ArrowLeft' ){e.preventDefault();setBleft(); return;}
-  if(e.key==='ArrowRight'){e.preventDefault();setBright();return;}
-  if(e.key==='Escape'    ){e.preventDefault();clHH();     return;}
-  if(e.key==='Backspace'||c===8){var fi=document.querySelector('.sf input');if(fi){e.preventDefault();fi.focus();}return;}
-  if(e.key==='1'||c===49||c===97){fB.src='/exp-1';return;}
-  if(e.key==='2'||c===50||c===98){fB.src='/exp-2';return;}
+  setMenu(DB.style.left===_z);
+}
+function setMenu(open){
+  var tl=document.getElementById('TL');
+  var tr=document.getElementById('TR');
+  if(tl) tl.style.display=open?'inline':'none';
+  if(tr) tr.style.display=open?'none':'inline';
+}
+function setSF() {
+  var S=document.getElementById('fS');
+  if(S && S.contentWindow && S.contentWindow.focusSearch) S.contentWindow.focusSearch();
+}
+(function(){
+  var dd=document.getElementById('DD');
+  dd.addEventListener('mousedown', function(e){
+    _drag=true; setPR(fromX(e.clientX)); setCard(_v);
+    if(e.preventDefault) e.preventDefault();
+  });
+  window.addEventListener('mousemove', function(e){
+    if(!_drag) return; setPR(fromX(e.clientX)); setCard(_v);
+  });
+  window.addEventListener('mouseup',   function(){ _drag=false; });
+})();
+document.addEventListener('keydown', function(e) {
+  const k=e.key;
+  const isInput=e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA';
+  if(isInput){
+    if(k==='Escape'                 ){e.preventDefault(); if(e.target.value) e.target.value='';  else e.target.blur(); }
+    if(k==='ArrowLeft'  && e.ctrlKey){ e.preventDefault(); setBL()}
+    if(k==='ArrowRight' && e.ctrlKey){ e.preventDefault(); setBR()}
+    return;
+  }
+  if(k==='ArrowLeft') {e.preventDefault(); setBL(); return}
+  if(k==='ArrowRight'){e.preventDefault(); setBR(); return}
+  if(k==='Escape')    {e.preventDefault(); clkHH(); return}
+  if(k==='Backspace') {e.preventDefault(); setSF(); return}
+  if(k==='1')         {e.preventDefault(); lf('/exp-1'); return}
+  if(k==='2')         {e.preventDefault(); lf('/exp-2'); return}
+  if(k==='3')         {e.preventDefault(); lf('/exp-3'); return}
+  if(k==='4')         {top.location.href='/home'; return}
 });
 document.addEventListener('DOMContentLoaded',function(){
-  if(DC.style.left==='' || DC.style.left==='0%'){DC.style.left='100%';}
-  PR.value=parseInt(localStorage.getItem('panelPos'))
-});
-let startX=0, startLeft=0;
-PR.addEventListener('mousedown',function(e){startX=e.clientX;startLeft=parseInt(DC.style.left)||0;});
-document.addEventListener('mousemove',function(e){
-  if(isDragging){
-     const newPos=startLeft+(e.clientX-startX)/window.innerWidth*100;
-     PR.value     =newPos;
-     DC.style.left=newPos+'%';
-  }
+  try{ var s=parseInt(localStorage.getItem('panelPos'),10); if(!isNaN(s)) _v=lim(s); }catch(e){}
+  DC.style.left='100%';   // карточка всегда закрыта при загрузке
+  setPR(_v);
+  setMenu(true);
 });
 </script>
-<footer><span>LegacyCoin (LBTC)</span> Block Explorer · CPU money for everyone</footer>
 </body>
 </html>
 `))

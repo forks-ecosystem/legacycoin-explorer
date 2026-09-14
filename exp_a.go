@@ -13,7 +13,7 @@ var expATemplate = template.Must(template.New("expA").Funcs(template.FuncMap{
 :root{--gold:#D4A017;--black:#080808;--dark:#0F0F0F;--panel:#040404;--panel2:#1a1a1a;--border:#222;--text:#E8E8E8;--muted:#888;--green:#22C55E;--red:#EF4444;--mono:'Courier New',monospace;}
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;line-height:1.6;}
-.sidebar{position:fixed;left:0;top:54px;bottom:0;z-index:90;width:220px;min-width:220px;background:#010101;border-right:1px solid #222;display:flex;flex-direction:column;transition:width .2s,min-width .2s;overflow:hidden;}
+.sidebar{position:fixed;left:0;top:54px;bottom:0;z-index:90;width:220px;min-width:220px;background:#010101;display:flex;flex-direction:column;transition:width .2s,min-width .2s;overflow:hidden;}
 .sidebar.collapsed{width:44px;min-width:44px;border-right:none;}
 .sidebar .logo{display:block;padding:8px 20px;text-align:left;}
 .sidebar .logo img{height:40px;width:auto;}
@@ -26,7 +26,7 @@ body{background:var(--black);color:var(--text);font-family:-apple-system,BlinkMa
 .sl{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px}
 .sv{font-size:20px;font-weight:700;color:var(--gold);font-family:var(--mono);}
 .ss{font-size:11px;color:var(--muted);margin-top:2px;}
-.sbf{margin-top:auto;padding:10px 10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;color:var(--muted);font-size:13px;white-space:nowrap;user-select:none;}
+.sbf{margin-top:auto;padding:10px 10px;background:linear-gradient(to right,#000,#333,#000);display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;color:var(--muted);font-size:13px;white-space:nowrap;user-select:none;}
 .sbf:hover{color:var(--gold);}
 .sidebar.collapsed .sbtxt{display:none;}
 </style>

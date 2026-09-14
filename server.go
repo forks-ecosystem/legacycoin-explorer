@@ -22,6 +22,8 @@ type Server struct {
 	bookmarks      *BookmarkStore
 	recentMu       sync.Mutex
 	recentFallback map[string][]*Block
+	exp2Mu         sync.Mutex
+	exp2Fallback   map[int64]exp2Page
 }
 
 // NewServer creates a new explorer server.
@@ -49,24 +51,34 @@ func NewServer(rpc *RPCClient, port int, dataDir string) *Server {
 }
 
 func (s *Server) routes() {
-	//s.mux.HandleFunc("/", s.handleHome)
 	s.mux.HandleFunc("/", s.handleHomeEx) // ← заменили на новый хендлер
-	s.mux.HandleFunc("/exp-A", s.handleExpA)
+	s.mux.HandleFunc("/home", s.handleHome)
+	s.mux.HandleFunc("/exp-a", s.handleExpA)
 	s.mux.HandleFunc("/exp-1", s.handleExp1)
 	s.mux.HandleFunc("/exp-2", s.handleExp2)
+	s.mux.HandleFunc("/exp-3", s.handleExp3)
+	s.mux.HandleFunc("/exp-s", s.handleExpS)
+	s.mux.HandleFunc("/exp-block/", s.handleExpBlock)
+	s.mux.HandleFunc("/exp-tx/", s.handleExpTx)
+	s.mux.HandleFunc("/exp-address/", s.handleExpAddress)
 	s.mux.HandleFunc("/lbtc.png", s.handleLogo)
+	s.mux.HandleFunc("/left.png", s.handleStatic)
+	s.mux.HandleFunc("/right.png", s.handleStatic)
+	s.mux.HandleFunc("/favicon.ico", s.handleStatic)
 	s.mux.HandleFunc("/status", s.handleStatusPage())
 	s.mux.HandleFunc("/block/", s.handleBlock)
 	s.mux.HandleFunc("/blocks", s.handleBlocks)
 	s.mux.HandleFunc("/tx/", s.handleTx)
 	s.mux.HandleFunc("/address/", s.handleAddress)
 	s.mux.HandleFunc("/search", s.handleSearch)
+	s.mux.HandleFunc("/searchx", s.handleSearchX)
 	s.mux.HandleFunc("/api/stats", s.handleAPIStats)
 	s.mux.HandleFunc("/api/status", s.handleAPIStatus())
 	s.mux.HandleFunc("/api/blocks", s.handleAPIBlocks)
 	s.mux.HandleFunc("/api/block/", s.handleAPIBlock)
 	s.mux.HandleFunc("/api/tx/", s.handleAPITx)
 	s.mux.HandleFunc("/api/address/", s.handleAPIAddress)
+	s.mux.HandleFunc("/api/balance/", s.handleAPIBalance)
 	s.mux.HandleFunc("/api/bookmarks", s.handleAPIBookmarks)
 	s.mux.HandleFunc("/api/bookmarks/delete/", s.handleAPIBookmarkDelete)
 }
@@ -92,7 +104,7 @@ type homeData struct {
 }
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
+	if r.URL.Path != "/home" {
 		http.NotFound(w, r)
 		return
 	}
@@ -132,27 +144,51 @@ func (s *Server) handleBlocks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	perPage := int64(50)
-	tip, _ := s.rpc.GetBlockCount()
+
+	var tip int64
+	var blocks []*Block
+
+	// Первая страница — последние perPage блоков (новее сверху). При тёплом
+	// кэше отдаём без единого RPC-вызова: tip берётся из самого свежего блока.
+	if page == 1 {
+		if cached, err := s.cachedRecentBlocks(int(perPage)); err == nil && len(cached) > 0 {
+			blocks = cached
+			tip = blocks[0].Height
+			for _, b := range blocks {
+				if b != nil {
+					b.Confirmations = tip - b.Height + 1
+				}
+			}
+		}
+	}
+
+	if len(blocks) == 0 {
+		tip, _ = s.rpc.GetBlockCount()
+		start := tip - (page-1)*perPage
+		end := start - perPage + 1
+		if end < 0 {
+			end = 0
+		}
+		fails := 0
+		for h := start; h >= end; h-- {
+			b, err := s.rpc.GetBlockAtHeight(h)
+			if err != nil {
+				fails++
+				if fails >= 2 {
+					break
+				}
+				continue
+			}
+			fails = 0
+			b.Confirmations = tip - h + 1
+			blocks = append(blocks, b)
+		}
+	}
+
 	start := tip - (page-1)*perPage
 	end := start - perPage + 1
 	if end < 0 {
 		end = 0
-	}
-
-	var blocks []*Block
-	fails := 0
-	for h := start; h >= end; h-- {
-		b, err := s.rpc.GetBlockAtHeight(h)
-		if err != nil {
-			fails++
-			if fails >= 2 {
-				break
-			}
-			continue
-		}
-		fails = 0
-		b.Confirmations = tip - h + 1
-		blocks = append(blocks, b)
 	}
 
 	s.render(w, "blocks", map[string]interface{}{
@@ -167,65 +203,105 @@ func (s *Server) handleBlocks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleBlock(w http.ResponseWriter, r *http.Request) {
-	identifier := strings.TrimPrefix(r.URL.Path, "/block/")
-	identifier = strings.TrimSpace(identifier)
+	identifier := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/block/"))
 
+	// /block без id (после ServeMux-редиректа "/block" -> "/block/") — новейший блок.
 	var block *Block
 	var err error
-
-	// Try as height first, then as hash
-	if height, perr := strconv.ParseInt(identifier, 10, 64); perr == nil {
-		block, err = s.rpc.GetBlockAtHeight(height)
-	} else {
-		block, err = s.rpc.GetBlock(identifier)
+	if identifier != "" {
+		block = s.blockFromCache(identifier)
+	}
+	if block == nil {
+		if identifier == "" {
+			var tip int64
+			if tip, err = s.rpc.GetBlockCount(); err == nil {
+				block, err = s.rpc.GetBlockAtHeight(tip)
+			}
+		} else if height, perr := strconv.ParseInt(identifier, 10, 64); perr == nil {
+			block, err = s.rpc.GetBlockAtHeight(height)
+		} else {
+			block, err = s.rpc.GetBlock(identifier)
+		}
+		// Узел под rate-limit: последняя попытка из тёплого кэша.
+		if (err != nil || block == nil) && identifier != "" {
+			block = s.blockFromCache(identifier)
+		}
 	}
 
-	if err != nil {
+	if err != nil || block == nil {
 		s.render(w, "error", map[string]interface{}{
 			"Message": fmt.Sprintf("Block not found: %s", identifier),
 		})
 		return
 	}
 
-	tip, _ := s.rpc.GetBlockCount()
-	block.Confirmations = tip - block.Height + 1
+	if tip, terr := s.rpc.GetBlockCount(); terr == nil && tip >= block.Height {
+		block.Confirmations = tip - block.Height + 1
+	}
 
-	s.render(w, "block", map[string]interface{}{
-		"Block":  block,
-		"Reward": blockRewardForHeight(block.Height),
-	})
+	// Полноценная страница блока с меню, статистикой и футером (шаблон "block").
+	s.render(w, "block", s.pageData(map[string]interface{}{
+		"Block": block,
+	}))
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	if q == "" {
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-	// Try as block height
-	if height, err := strconv.ParseInt(q, 10, 64); err == nil {
-		http.Redirect(w, r, fmt.Sprintf("/block/%d", height), http.StatusFound)
-		return
-	}
-	// Try as transaction hash (64 hex chars, not a block hash)
-	if len(q) == 64 && isTxid(q) {
-		http.Redirect(w, r, fmt.Sprintf("/tx/%s", q), http.StatusFound)
-		return
-	}
-	// Try as block hash (64 hex chars)
-	if len(q) == 64 {
-		http.Redirect(w, r, fmt.Sprintf("/block/%s", q), http.StatusFound)
-		return
-	}
-	// Try as address (starts with L for LBTC)
-	if isAddress(q) {
-		http.Redirect(w, r, fmt.Sprintf("/address/%s", q), http.StatusFound)
-		return
-	}
-	s.render(w, "error", map[string]interface{}{
-		"Message": fmt.Sprintf("Not found: %s. Enter a block height, block hash, transaction hash, or address.", q),
-	})
+    q := strings.TrimSpace(r.URL.Query().Get("q"))
+    if q == "" {
+        http.Redirect(w, r, "/", http.StatusFound)
+        return
+    }
+    // Try as block height
+    if height, err := strconv.ParseInt(q, 10, 64); err == nil {
+        http.Redirect(w, r, fmt.Sprintf("/block/%d", height), http.StatusFound)
+        return
+    }
+    // Try as transaction hash (64 hex chars, not a block hash)
+    if len(q) == 64 && isTxid(q) {
+        http.Redirect(w, r, fmt.Sprintf("/tx/%s", q), http.StatusFound)
+        return
+    }
+    // Try as block hash (64 hex chars)
+    if len(q) == 64 {
+        http.Redirect(w, r, fmt.Sprintf("/block/%s", q), http.StatusFound)
+        return
+    }
+    // Try as address (starts with L for LBTC)
+    if isAddress(q) {
+        http.Redirect(w, r, fmt.Sprintf("/address/%s", q), http.StatusFound)
+        return
+    }
+    s.render(w, "error", map[string]interface{}{
+        "Message": fmt.Sprintf("Not found: %s. Enter a block height, block hash, transaction hash, or address.", q),
+    })
 }
+func (s *Server) handleSearchX(w http.ResponseWriter, r *http.Request) {
+    q := strings.TrimSpace(r.URL.Query().Get("q"))
+    if q == "" {
+        http.Redirect(w, r, "/", http.StatusFound)
+        return
+    }
+    if height, err := strconv.ParseInt(q, 10, 64); err == nil {
+        http.Redirect(w, r, fmt.Sprintf("/exp-block/%d", height), http.StatusFound)
+        return
+    }
+    if len(q) == 64 && isTxid(q) {
+        http.Redirect(w, r, fmt.Sprintf("/exp-tx/%s", q), http.StatusFound)
+        return
+    }
+    if len(q) == 64 {
+        http.Redirect(w, r, fmt.Sprintf("/exp-block/%s", q), http.StatusFound)
+        return
+    }
+    if isAddress(q) {
+        http.Redirect(w, r, fmt.Sprintf("/exp-address/%s", q), http.StatusFound)
+        return
+    }
+    s.render(w, "error", map[string]interface{}{
+        "Message": fmt.Sprintf("Not found: %s. Enter a block height, block hash, transaction hash, or address.", q),
+    })
+}
+
 
 func isTxid(s string) bool {
 	if len(s) != 64 {
@@ -311,10 +387,10 @@ func (s *Server) handleTx(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.render(w, "tx", map[string]interface{}{
+	s.render(w, "tx", s.pageData(map[string]interface{}{
 		"Tx":    tx,
 		"Block": block,
-	})
+	}))
 }
 
 func (s *Server) handleAddress(w http.ResponseWriter, r *http.Request) {
@@ -341,10 +417,10 @@ func (s *Server) handleAddress(w http.ResponseWriter, r *http.Request) {
 		txs = []*RawTransaction{}
 	}
 
-	s.render(w, "address", map[string]interface{}{
+	s.render(w, "address", s.pageData(map[string]interface{}{
 		"Address": addrInfo,
 		"Txs":     txs,
-	})
+	}))
 }
 
 func (s *Server) handleAPITx(w http.ResponseWriter, r *http.Request) {
@@ -359,6 +435,10 @@ func (s *Server) handleAPITx(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAPIAddress(w http.ResponseWriter, r *http.Request) {
 	address := strings.TrimPrefix(r.URL.Path, "/api/address/")
+	if address == "" {
+		jsonError(w, "address required", 400)
+		return
+	}
 	addrInfo, err := s.rpc.ValidateAddress(address)
 	if err != nil {
 		jsonError(w, "address not found", 404)
@@ -368,6 +448,26 @@ func (s *Server) handleAPIAddress(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]interface{}{
 		"address": addrInfo,
 		"txs":     txs,
+	})
+}
+
+func (s *Server) handleAPIBalance(w http.ResponseWriter, r *http.Request) {
+	address := strings.TrimPrefix(r.URL.Path, "/api/balance/")
+	if address == "" {
+		jsonError(w, "address required", 400)
+		return
+	}
+	bal, err := s.rpc.GetAddressBalance(address)
+	if err != nil {
+		jsonError(w, "address not found", 404)
+		return
+	}
+	jsonOK(w, map[string]interface{}{
+		"address":             bal.Address,
+		"balance":             bal.Balance,
+		"balance_base_units":  bal.BalanceBaseUnits,
+		"received":            bal.Received,
+		"received_base_units": bal.ReceivedBaseUnits,
 	})
 }
 
@@ -397,6 +497,17 @@ func (s *Server) cachedMining() (*MiningInfo, error) {
 	return mining, nil
 }
 
+// pageData дополняет данные шаблона статистикой сети для statsSnip
+// (NodeOnline / Info / Mining), кэшированной с коротким TTL.
+func (s *Server) pageData(m map[string]interface{}) map[string]interface{} {
+	info, err1 := s.cachedInfo()
+	mining, err2 := s.cachedMining()
+	m["NodeOnline"] = err1 == nil && err2 == nil
+	m["Info"] = info
+	m["Mining"] = mining
+	return m
+}
+
 func (s *Server) cachedRecentBlocks(n int) ([]*Block, error) {
 	key := fmt.Sprintf("blocks:%d", n)
 	if v, ok := s.cache.Get(key); ok {
@@ -414,7 +525,7 @@ func (s *Server) cachedRecentBlocks(n int) ([]*Block, error) {
 		return nil, err
 	}
 	if len(blocks) > 0 {
-		s.cache.Set(key, blocks, 30*time.Second)
+		s.cache.Set(key, blocks, 120*time.Second)
 		s.recentMu.Lock()
 		s.recentFallback[key] = blocks
 		s.recentMu.Unlock()
@@ -424,6 +535,22 @@ func (s *Server) cachedRecentBlocks(n int) ([]*Block, error) {
 		return fb, nil
 	}
 	return blocks, nil
+}
+
+// recentBlocksWarm возвращает последние блоки только из тёплого кэша или
+// последнего успешного фолбэка. Сетевых вызовов НЕ делает — для быстрых
+// страниц карточек, где основным путём должен быть прямой RPC-запрос.
+func (s *Server) recentBlocksWarm(n int) []*Block {
+	key := fmt.Sprintf("blocks:%d", n)
+	if v, ok := s.cache.Get(key); ok {
+		return v.([]*Block)
+	}
+	s.recentMu.Lock()
+	defer s.recentMu.Unlock()
+	if fb, ok := s.recentFallback[key]; ok {
+		return fb
+	}
+	return nil
 }
 
 // ── Render helper ─────────────────────────────────────────────────────────────
